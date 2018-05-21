@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <random>
 #include <iostream>
 #include <functional>
 #include <string>
@@ -93,8 +94,10 @@ std::string ToDot(Node<kDegree>* root) {
     ss << "node" << id << " [label=\"" << label.str() << "\"];";
     for (int i = 0; i < node->n + 1; ++i) {
       auto child = node->children[i];
-      print_node(child, start + i);
-      ss << "node:" << id << " -> " << "node" << start + i << ";";
+      if (child != nullptr) {
+        print_node(child, start + i);
+        ss << "node" << id << ":f" << i << " -> " << "node" << start + i << ";";
+      }
     }
   };
   if (root != nullptr) {
@@ -106,9 +109,12 @@ std::string ToDot(Node<kDegree>* root) {
 
 
 int main() {
-  Node<2>* root = new Node<2>{};;
-  root->n=0;
+  std::default_random_engine engine{std::random_device{}()};
+  std::uniform_int_distribution<> distribution{0, 127};
+  Node<2>* root = nullptr;
+  for (int i = 0; i < 10; ++i) {
+    root = Insert(root, distribution(engine));
+  }
   std::cout << ToDot(root) << std::endl;
-  root = Insert(root, 3);
   return 0;
 }
