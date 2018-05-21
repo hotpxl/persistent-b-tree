@@ -24,6 +24,17 @@ struct Node {
   int n;
 };
 
+
+template <int kDegree>
+void InsertNoSplit(Node<kDegree>* node, int k, int i, Node<kDegree>* l, Node<kDegree>* r) {
+  std::copy_backward(node->keys.begin() + i, node->keys.begin() + node->n, node->keys.begin() + node->n + 1);
+  std::copy_backward(node->children.begin() + i + 1, node->children.begin() + node->n + 1, node->children.begin() + node->n + 2);
+  node->keys[i] = k;
+  node->children[i] = l;
+  node->children[i+1] = r;
+  ++node->n;
+}
+
 template <int kDegree>
 Node<kDegree>* Insert(Node<kDegree>* root, int k) {
   std::vector<std::pair<Node<kDegree>*, int>> path;
@@ -52,15 +63,13 @@ Node<kDegree>* Insert(Node<kDegree>* root, int k) {
     int index;
     std::tie(top, index) = path.back();
     path.pop_back();
-    if (top->n + 1 < 2 * kDegree - 1) {
-      std::copy_backward(top->keys.begin() + index, top->keys.begin() + top->n, top->keys.begin() + top->n + 1);
-      std::copy_backward(top->children.begin() + index + 1, top->children.begin() + top->n + 1, top->children.begin() + top->n + 2);
-      top->keys[index] = k;
-      top->children[index] = l;
-      top->children[index+1] = r;
-      ++top->n;
+    if (top->n + 1 < 2 * kDegree) {
+      InsertNoSplit(top, k, index, l, r);
       return root;
     }
+    auto old_l = l;
+    auto old_r = r;
+    auto old_k = k;
     l = top;
     r = new Node<kDegree>{};
     k = top->keys[kDegree - 1];
@@ -68,6 +77,11 @@ Node<kDegree>* Insert(Node<kDegree>* root, int k) {
     std::copy(l->children.begin() + kDegree, l->children.end(), r->children.begin());
     l->n = kDegree - 1;
     r->n = kDegree - 1;
+    if (index < kDegree) {
+      InsertNoSplit(l, old_k, index, old_l, old_r);
+    } else {
+      InsertNoSplit(r, old_k, index - kDegree, old_l, old_r);
+    }
   }
   Node<kDegree>* new_root = new Node<kDegree>{};
   new_root->keys[0] = k;
@@ -112,9 +126,14 @@ int main() {
   std::default_random_engine engine{std::random_device{}()};
   std::uniform_int_distribution<> distribution{0, 127};
   Node<2>* root = nullptr;
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 3; ++i) {
     root = Insert(root, distribution(engine));
   }
+  root = Insert(root, 3);
+  root = Insert(root, 2);
+  root = Insert(root, 4);
+  root = Insert(root, 5);
+
   std::cout << ToDot(root) << std::endl;
   return 0;
 }
