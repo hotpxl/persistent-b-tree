@@ -78,7 +78,7 @@ template <int kDegree>
 std::tuple<Node<kDegree>*, Node<kDegree>*, int> Split(Node<kDegree>* node) {
   int left_n = node->n / 2;
   int right_n = node->n - left_n - 1;
-  if (left_n < kDegree - 1 || right_n - 1) {
+  if (left_n < kDegree - 1 || right_n < kDegree - 1) {
     throw std::invalid_argument{"Node underflow."};
   }
   int middle = std::move(node->keys[left_n]);
@@ -151,10 +151,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
 template <int kDegree>
 Node<kDegree>* FixOverflow(std::vector<std::pair<Node<kDegree>*, int>> path,
                            int key) {
-  if (path.empty()) {
-    return nullptr;
-  }
-  auto old_root = path[0].first;
+  auto old_root = path.empty() ? nullptr : path[0].first;
   Node<kDegree>* right_child = nullptr;
   while (!path.empty()) {
     auto[top, index] = path.back();
@@ -243,7 +240,7 @@ std::string ToDot(Node<kDegree>* root) {
   std::function<void(Node<kDegree>*, int)> print_node =
       [&ss, &node_counter, &print_node](Node<kDegree>* node, int id) {
         int start = node_counter;
-        node_counter += node->n;
+        node_counter += node->n + 1;
         std::stringstream label;
         for (int i = 0; i < node->n; ++i) {
           label << "<f" << i << ">|" << node->keys[i] << "|";
@@ -270,7 +267,7 @@ int main() {
   std::default_random_engine engine{std::random_device{}()};
   std::uniform_int_distribution<> distribution{0, 127};
   Node<2>* root = nullptr;
-  std::cout << ToDot(root) << std::endl;
+  /*
   for (int i = 0; i < 3; ++i) {
     root = Insert(root, distribution(engine));
   }
@@ -278,6 +275,10 @@ int main() {
   root = Insert(root, 2);
   root = Insert(root, 4);
   root = Insert(root, 5);
+  */
+  for (int i = 0; i < 90; ++i) {
+    root = Insert(root, distribution(engine));
+  }
 
   std::cout << ToDot(root) << std::endl;
   return 0;
