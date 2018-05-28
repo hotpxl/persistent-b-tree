@@ -45,8 +45,12 @@ void InsertNoSplit(Node<kDegree>* node, int index, int key,
 }
 
 template <int kDegree>
-void RemoveNoMerge(Node<kDegree>* node, int index, bool remove_left_child) {
-  if (node->n <= kDegree - 1) {
+void RemoveNoMerge(Node<kDegree>* node, int index, bool remove_left_child,
+                   bool no_check = false) {
+  if (!no_check && node->n <= kDegree - 1) {
+    throw std::invalid_argument{"Node underflow."};
+  }
+  if (no_check && node->n <= 0) {
     throw std::invalid_argument{"Node underflow."};
   }
   for (int i = index; i + 1 < node->n; ++i) {
@@ -100,7 +104,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
   }
   auto old_root = path[0].first;
   while (!path.empty()) {
-    auto[top, index] = path.back();
+    auto[top, _] = path.back();
     path.pop_back();
     if (kDegree - 1 <= top->n) {
       return old_root;
@@ -136,11 +140,11 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
     if (0 < parent_index) {
       auto sibling = parent->children[parent_index - 1];
       Merge(sibling, top, std::move(parent->keys[parent_index - 1]));
-      RemoveNoMerge(parent, parent_index - 1, false);
+      RemoveNoMerge(parent, parent_index - 1, false, true);
     } else if (parent_index < parent->n) {
       auto sibling = parent->children[parent_index + 1];
       Merge(top, sibling, std::move(parent->keys[parent_index]));
-      RemoveNoMerge(parent, parent_index, false);
+      RemoveNoMerge(parent, parent_index, false, true);
     } else {
       throw std::invalid_argument{"Unable to merge nodes."};
     }
@@ -202,12 +206,9 @@ Node<kDegree>* Insert(Node<kDegree>* root, int k) {
   return FixOverflow(std::move(path), k);
 }
 
-/*
 template <int kDegree>
-void Remove(Node<kDegree>* root, int k) {
-  std::vector<std::pair<Node<kDegree>*, int>> path;
+bool Find(Node<kDegree>* root, int k) {
   Node<kDegree>* current = root;
-  bool found = false;
   while (current != nullptr) {
     int l = 0;
     int r = current->n;
@@ -219,18 +220,51 @@ void Remove(Node<kDegree>* root, int k) {
         r = m;
       }
     }
-    path.push_back({current, l});
     if (l < current->n && current->keys[l] == k) {
-      found = true;
-      break;
+      return true;
     }
     current = current->children[l];
   }
-  if (!found) {
-    return;
-  }
+  return false;
 }
-*/
+
+template <int kDegree>
+Node<kDegree>* Remove(Node<kDegree>* root, int k) {
+  std::vector<std::pair<Node<kDegree>*, int>> path;
+  Node<kDegree>* current = root;
+  while (current != nullptr) {
+    int l = 0;
+    int r = current->n;
+    while (l < r) {
+      int m = (l + r) / 2;
+      if (current->keys[m] < k) {
+        l = m + 1;
+      } else {
+        r = m;
+      }
+    }
+    if (l < current->n && current->keys[l] == k) {
+      path.push_back({current, l + 1});
+      auto next = current->children[l + 1];
+      Node<kDegree>* last = nullptr;
+      while (next != nullptr) {
+        path.push_back({next, 0});
+        last = next;
+        next = next->children[0];
+      }
+      if (last != nullptr) {
+        current->keys[l] = std::move(last->keys[0]);
+        RemoveNoMerge(last, 0, true, true);
+      } else {
+        RemoveNoMerge(current, l, true, true);
+      }
+      return FixUnderflow(path);
+    }
+    path.push_back({current, l});
+    current = current->children[l];
+  }
+  return root;
+}
 
 template <int kDegree>
 std::string ToDot(Node<kDegree>* root) {
@@ -277,8 +311,22 @@ int main() {
   root = Insert(root, 5);
   */
   for (int i = 0; i < 90; ++i) {
-    root = Insert(root, distribution(engine));
+    root = Insert(root, i);
   }
+  root = Remove(root, 88);
+  root = Remove(root, 89);
+  root = Remove(root, 84);
+  root = Remove(root, 87);
+  root = Remove(root, 83);
+  root = Remove(root, 79);
+  root = Remove(root, 86);
+  root = Remove(root, 85);
+  for (int i = 0; i < 80; ++i) {
+    root = Remove(root, i);
+  }
+  root = Remove(root, 80);
+  root = Remove(root, 81);
+  root = Remove(root, 82);
 
   std::cout << ToDot(root) << std::endl;
   return 0;
