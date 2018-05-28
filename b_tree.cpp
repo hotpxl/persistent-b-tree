@@ -28,7 +28,7 @@ struct Node {
 };
 
 template <int kDegree>
-std::vector<std::pair<Node<kDegree>*, int>> CopyPath(std::vector<std::pair<Node<kDegree>*, int>> path) {
+std::vector<std::pair<Node<kDegree>*, int>> CopyPath(const std::vector<std::pair<Node<kDegree>*, int>>& path) {
   std::vector<std::pair<Node<kDegree>*, int>> ret;
   Node<kDegree>* last = nullptr;
   for (auto i= path.rbegin(); i != path.rend(); ++i) {
