@@ -28,6 +28,21 @@ struct Node {
 };
 
 template <int kDegree>
+std::vector<std::pair<Node<kDegree>*, int>> CopyPath(std::vector<std::pair<Node<kDegree>*, int>> path) {
+  std::vector<std::pair<Node<kDegree>*, int>> ret;
+  Node<kDegree>* last = nullptr;
+  for (auto i= path.rbegin(); i != path.rend(); ++i) {
+    auto& [node, index] = *i;
+    Node<kDegree>* new_node = new Node<kDegree>{*node};
+    new_node->children[index] = last;
+    last = new_node;
+    ret.push_back({new_node, index});
+  }
+  std::reverse(ret.begin(), ret.end());
+  return ret;
+}
+
+template <int kDegree>
 void InsertNoSplit(Node<kDegree>* node, int index, int key,
                    Node<kDegree>* child, bool insert_left_child) {
   if (2 * kDegree - 1 <= node->n) {
@@ -121,6 +136,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
     auto[parent, parent_index] = path.back();
     if (0 < parent_index &&
         kDegree - 1 < parent->children[parent_index - 1]->n) {
+      parent->children[parent_index-1] = new Node<kDegree>(*parent->children[parent_index-1]);
       auto sibling = parent->children[parent_index - 1];
       InsertNoSplit(top, 0, std::move(parent->keys[parent_index - 1]),
                     std::move(sibling->children[sibling->n]), true);
@@ -130,6 +146,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
     }
     if (parent_index < parent->n &&
         kDegree - 1 < parent->children[parent_index + 1]->n) {
+      parent->children[parent_index+1] = new Node<kDegree>(*parent->children[parent_index+1]);
       auto sibling = parent->children[parent_index + 1];
       InsertNoSplit(top, top->n, std::move(parent->keys[parent_index]),
                     sibling->children[0], false);
@@ -138,10 +155,12 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
       return old_root;
     }
     if (0 < parent_index) {
+      parent->children[parent_index-1] = new Node<kDegree>(*parent->children[parent_index-1]);
       auto sibling = parent->children[parent_index - 1];
       Merge(sibling, top, std::move(parent->keys[parent_index - 1]));
       RemoveNoMerge(parent, parent_index - 1, false, true);
     } else if (parent_index < parent->n) {
+      parent->children[parent_index+1] = new Node<kDegree>(*parent->children[parent_index+1]);
       auto sibling = parent->children[parent_index + 1];
       Merge(top, sibling, std::move(parent->keys[parent_index]));
       RemoveNoMerge(parent, parent_index, false, true);
@@ -203,7 +222,7 @@ Node<kDegree>* Insert(Node<kDegree>* root, int k) {
     path.push_back({current, l});
     current = current->children[l];
   }
-  return FixOverflow(std::move(path), k);
+  return FixOverflow(CopyPath(path), k);
 }
 
 template <int kDegree>
@@ -244,19 +263,21 @@ Node<kDegree>* Remove(Node<kDegree>* root, int k) {
       }
     }
     if (l < current->n && current->keys[l] == k) {
+      int current_i = path.size();
       path.push_back({current, l + 1});
       auto next = current->children[l + 1];
-      Node<kDegree>* last = nullptr;
+      bool swap = false;
       while (next != nullptr) {
         path.push_back({next, 0});
-        last = next;
+        swap = true;
         next = next->children[0];
       }
-      if (last != nullptr) {
-        current->keys[l] = std::move(last->keys[0]);
-        RemoveNoMerge(last, 0, true, true);
+      path = CopyPath(std::move(path));
+      if (swap) {
+        path[current_i].first->keys[l] = std::move(path.back().first->keys[0]);
+        RemoveNoMerge(path.back().first, 0, true, true);
       } else {
-        RemoveNoMerge(current, l, true, true);
+        RemoveNoMerge(path[current_i].first, l, true, true);
       }
       return FixUnderflow(path);
     }
@@ -301,6 +322,7 @@ int main() {
   std::default_random_engine engine{std::random_device{}()};
   std::uniform_int_distribution<> distribution{0, 127};
   Node<2>* root = nullptr;
+  std::vector<Node<2>*> roots;
   /*
   for (int i = 0; i < 3; ++i) {
     root = Insert(root, distribution(engine));
@@ -312,6 +334,7 @@ int main() {
   */
   for (int i = 0; i < 90; ++i) {
     root = Insert(root, i);
+    //roots.push_back(root);
   }
   root = Remove(root, 88);
   root = Remove(root, 89);
@@ -323,11 +346,14 @@ int main() {
   root = Remove(root, 85);
   for (int i = 0; i < 80; ++i) {
     root = Remove(root, i);
+    roots.push_back(root);
   }
   root = Remove(root, 80);
   root = Remove(root, 81);
   root = Remove(root, 82);
 
-  std::cout << ToDot(root) << std::endl;
+  for (auto i : roots) {
+    std::cout << ToDot(i) << std::endl;
+  }
   return 0;
 }
