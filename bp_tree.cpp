@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdio>
 #include <functional>
-#include <cassert>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -60,32 +60,32 @@ void RemoveNoMerge(Node<kDegree>* node, int index, bool remove_left_child) {
 
 template <int kDegree>
 Node<kDegree>* Merge(Node<kDegree>* left, Node<kDegree>* right, int key) {
-  if (2*kDegree-1<left->n + right->n + 1) {
+  if (2 * kDegree - 1 < left->n + right->n + 1) {
     throw std::invalid_argument{"Node overflow."};
   }
   left->keys[left->n] = std::move(key);
-  for (int i = 0; i <right->n; ++i) {
-    left->keys[left->n+1+i] = std::move(right->keys[i]);
-    left->children[left->n+1+i] = std::move(right->children[i]);
+  for (int i = 0; i < right->n; ++i) {
+    left->keys[left->n + 1 + i] = std::move(right->keys[i]);
+    left->children[left->n + 1 + i] = std::move(right->children[i]);
   }
   left->children[left->n + right->n + 1] = std::move(right->children[right->n]);
-  left->n = left->n + right->n  +1;
+  left->n = left->n + right->n + 1;
   delete right;
   return left
 }
 
 template <int kDegree>
 std::tuple<Node<kDegree>*, Node<kDegree>*, int> Split(Node<kDegree>* node) {
-  int left_n = node->n/2;
+  int left_n = node->n / 2;
   int right_n = node->n - left_n - 1;
-  if (left_n < kDegree-1 || right_n -1) {
+  if (left_n < kDegree - 1 || right_n - 1) {
     throw std::invalid_argument{"Node underflow."};
   }
   int middle = std::move(node->keys[left_n]);
   Node<kDegree>* right = new Node<kDegree>{};
   for (int i = 0; i < right_n; ++i) {
-    right->keys[i] = std::move(node->keys[i+left_n+1]);
-    right->children[i] = std::move(node->children[i+left_n+1]);
+    right->keys[i] = std::move(node->keys[i + left_n + 1]);
+    right->children[i] = std::move(node->children[i + left_n + 1]);
   }
   right->children[right_n] = std::move(node->children[node->n]);
   node->n = left_n;
@@ -118,25 +118,27 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
     if (0 < parent_index &&
         kDegree - 1 < parent->children[parent_index - 1]->n) {
       auto sibling = parent->children[parent_index - 1];
-      InsertNoSplit(top, 0, std::move(parent->keys[parent_index - 1]), std::move(sibling->children[sibling->n]), true);
+      InsertNoSplit(top, 0, std::move(parent->keys[parent_index - 1]),
+                    std::move(sibling->children[sibling->n]), true);
       parent->keys[parent_index - 1] = std::move(sibling->keys[sibling->n - 1]);
-      RemoveNoMerge(sibling, sibling->n-1, false);
+      RemoveNoMerge(sibling, sibling->n - 1, false);
       return old_root;
     }
     if (parent_index < n &&
         kDegree - 1 < parent->children[parent_index + 1]->n) {
       auto sibling = parent->children[parent_index + 1];
-      InsertNoSplit(top, top->n, std::move(parent->keys[parent_index]), sibling->children[0], false);
+      InsertNoSplit(top, top->n, std::move(parent->keys[parent_index]),
+                    sibling->children[0], false);
       parent->keys[parent_index] = std::move(sibling->keys[0]);
       RemoveNoMerge(sibling, 0, true);
       return old_root;
     }
     if (0 < parent_index) {
       auto sibling = parent->children[parent_index - 1];
-      Merge(sibling, top, std::move(parent->keys[parent_index-1]));
-      RemoveNoMerge(parent, parent_index-1, false);
+      Merge(sibling, top, std::move(parent->keys[parent_index - 1]));
+      RemoveNoMerge(parent, parent_index - 1, false);
     } else if (parent_index < n) {
-      auto sibling = parent->children[parent_index+1];
+      auto sibling = parent->children[parent_index + 1];
       Merge(top, sibling, std::move(parent->keys[parent_index]));
       RemoveNoMerge(parent, parent_index, false);
     } else {
@@ -147,33 +149,35 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
 }
 
 template <int kDegree>
-Node<kDegree>* FixOverflow(std::vector<std::pair<Node<kDegree>*, int>> path, int key) {
+Node<kDegree>* FixOverflow(std::vector<std::pair<Node<kDegree>*, int>> path,
+                           int key) {
   if (path.empty()) {
     return nullptr;
   }
-  auto old_root= path[0].first;
-  Node<kDegree>* right_child=nullptr;
+  auto old_root = path[0].first;
+  Node<kDegree>* right_child = nullptr;
   while (!path.empty()) {
     auto[top, index] = path.back();
     path.pop_back();
-    if (top->n < 2*kDegree-1) {
+    if (top->n < 2 * kDegree - 1) {
       InsertNoSplit(top, index, std::move(key), right_child, false);
       return old_root;
     }
-    auto [_, right, middle] = Split(top);
+    auto[_, right, middle] = Split(top);
     if (index <= top->n) {
       InsertNoSplit(top, index, std::move(key), std::move(right_child), false);
     } else {
-      InsertNoSplit(right, index - top->n-1, std::move(key), std::move(right_child), false);
+      InsertNoSplit(right, index - top->n - 1, std::move(key),
+                    std::move(right_child), false);
     }
     key = std::move(middle);
-    right_child=std:move(right);
+    right_child = std : move(right);
   }
   Node<kDegree>* new_root = new Node<kDegree>{};
   new_root->keys[0] = std::move(key);
   new_root->children[0] = std::move(old_root);
   new_root->children[1] = std::move(right_child);
-  new_root->n=1;
+  new_root->n = 1;
   return new_root;
 }
 
