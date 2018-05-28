@@ -34,13 +34,13 @@ void InsertNoSplit(Node<kDegree>* node, int index, int key,
     throw std::invalid_argument{"Node overflow."};
   }
   for (int i = node->n; index < i; --i) {
-    keys[i] = std::move(keys[i - 1]);
+    node->keys[i] = std::move(node->keys[i - 1]);
   }
   for (int i = node->n + 1; (insert_left_child ? index : index + 1) < i; --i) {
-    children[i] = std::move(children[i - 1]);
+    node->children[i] = std::move(node->children[i - 1]);
   }
-  keys[index] = std::move(key);
-  children[insert_left_child ? index : index + 1] = std::move(child);
+  node->keys[index] = std::move(key);
+  node->children[insert_left_child ? index : index + 1] = std::move(child);
   ++node->n;
 }
 
@@ -50,10 +50,10 @@ void RemoveNoMerge(Node<kDegree>* node, int index, bool remove_left_child) {
     throw std::invalid_argument{"Node underflow."};
   }
   for (int i = index; i + 1 < node->n; ++i) {
-    keys[i] = std::move(keys[i + 1]);
+    node->keys[i] = std::move(node->keys[i + 1]);
   }
   for (int i = (remove_left_child ? index : index + 1); i < node->n; ++i) {
-    children[i] = std::move(children[i + 1]);
+    node->children[i] = std::move(node->children[i + 1]);
   }
   --node->n;
 }
@@ -71,7 +71,7 @@ Node<kDegree>* Merge(Node<kDegree>* left, Node<kDegree>* right, int key) {
   left->children[left->n + right->n + 1] = std::move(right->children[right->n]);
   left->n = left->n + right->n + 1;
   delete right;
-  return left
+  return left;
 }
 
 template <int kDegree>
@@ -124,7 +124,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
       RemoveNoMerge(sibling, sibling->n - 1, false);
       return old_root;
     }
-    if (parent_index < n &&
+    if (parent_index < parent->n &&
         kDegree - 1 < parent->children[parent_index + 1]->n) {
       auto sibling = parent->children[parent_index + 1];
       InsertNoSplit(top, top->n, std::move(parent->keys[parent_index]),
@@ -137,7 +137,7 @@ Node<kDegree>* FixUnderflow(std::vector<std::pair<Node<kDegree>*, int>> path) {
       auto sibling = parent->children[parent_index - 1];
       Merge(sibling, top, std::move(parent->keys[parent_index - 1]));
       RemoveNoMerge(parent, parent_index - 1, false);
-    } else if (parent_index < n) {
+    } else if (parent_index < parent->n) {
       auto sibling = parent->children[parent_index + 1];
       Merge(top, sibling, std::move(parent->keys[parent_index]));
       RemoveNoMerge(parent, parent_index, false);
@@ -171,7 +171,7 @@ Node<kDegree>* FixOverflow(std::vector<std::pair<Node<kDegree>*, int>> path,
                     std::move(right_child), false);
     }
     key = std::move(middle);
-    right_child = std : move(right);
+    right_child = std::move(right);
   }
   Node<kDegree>* new_root = new Node<kDegree>{};
   new_root->keys[0] = std::move(key);
@@ -202,42 +202,10 @@ Node<kDegree>* Insert(Node<kDegree>* root, int k) {
     path.push_back({current, l});
     current = current->children[l];
   }
-  Node<kDegree>* l = nullptr;
-  Node<kDegree>* r = nullptr;
-  while (!path.empty()) {
-    Node<kDegree>* top;
-    int index;
-    std::tie(top, index) = path.back();
-    path.pop_back();
-    if (top->n + 1 < 2 * kDegree) {
-      InsertNoSplit(top, k, index, l, r);
-      return root;
-    }
-    auto old_l = l;
-    auto old_r = r;
-    auto old_k = k;
-    l = top;
-    r = new Node<kDegree>{};
-    k = top->keys[kDegree - 1];
-    std::copy(l->keys.begin() + kDegree, l->keys.end(), r->keys.begin());
-    std::copy(l->children.begin() + kDegree, l->children.end(),
-              r->children.begin());
-    l->n = kDegree - 1;
-    r->n = kDegree - 1;
-    if (index < kDegree) {
-      InsertNoSplit(l, old_k, index, old_l, old_r);
-    } else {
-      InsertNoSplit(r, old_k, index - kDegree, old_l, old_r);
-    }
-  }
-  Node<kDegree>* new_root = new Node<kDegree>{};
-  new_root->keys[0] = k;
-  new_root->children[0] = l;
-  new_root->children[1] = r;
-  new_root->n = 1;
-  return new_root;
+  return FixOverflow(std::move(path), k);
 }
 
+/*
 template <int kDegree>
 void Remove(Node<kDegree>* root, int k) {
   std::vector<std::pair<Node<kDegree>*, int>> path;
@@ -265,6 +233,7 @@ void Remove(Node<kDegree>* root, int k) {
     return;
   }
 }
+*/
 
 template <int kDegree>
 std::string ToDot(Node<kDegree>* root) {
@@ -301,6 +270,7 @@ int main() {
   std::default_random_engine engine{std::random_device{}()};
   std::uniform_int_distribution<> distribution{0, 127};
   Node<2>* root = nullptr;
+  std::cout << ToDot(root) << std::endl;
   for (int i = 0; i < 3; ++i) {
     root = Insert(root, distribution(engine));
   }

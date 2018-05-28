@@ -1,5 +1,10 @@
-CXX := g++
-CXXFLAGS += -g -Wall -Wextra -std=c++14
+CXX := clang++-mp-5.0
+CXXFLAGS += -g -Wall -Wextra -std=c++17
 
-bp_tree: bp_tree.cpp
+b_tree: b_tree.cpp
 	$(CXX) $< -o $@ $(CXXFLAGS)
+
+clean:
+	rm -f b_tree
+
+.PHONY: clean
