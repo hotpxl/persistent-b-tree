@@ -5,6 +5,6 @@ b_tree: b_tree.cpp
 	$(CXX) $< -o $@ $(CXXFLAGS)
 
 clean:
-	rm -f b_tree
+	rm -rf b_tree b_tree.dSYM
 
 .PHONY: clean
