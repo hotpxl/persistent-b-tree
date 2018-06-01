@@ -1,3 +1,5 @@
+#ifndef B_TREE_H_
+#define B_TREE_H_
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -360,3 +362,6 @@ std::string ToDot(
   ss << "}";
   return ss.str();
 }
+
+#undef OPTIONAL_NS
+#endif  // B_TREE_H_
