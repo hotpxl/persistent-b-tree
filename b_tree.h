@@ -4,7 +4,15 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+
+#if defined(__apple_build_version__)
+#include <experimental/optional>
+#define OPTIONAL_NS std::experimental
+#else
 #include <optional>
+#define OPTIONAL_NS std
+#endif
+
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -248,7 +256,7 @@ std::shared_ptr<Node<KeyType, MappedType, kDegree>> Insert(
 }
 
 template <class KeyType, class MappedType, int kDegree>
-std::optional<std::reference_wrapper<MappedType>> Find(
+OPTIONAL_NS::optional<std::reference_wrapper<MappedType>> Find(
     std::shared_ptr<Node<KeyType, MappedType, kDegree>> root,
     KeyType const& k) {
   std::shared_ptr<Node<KeyType, MappedType, kDegree>> current = root;
@@ -264,12 +272,12 @@ std::optional<std::reference_wrapper<MappedType>> Find(
       }
     }
     if (l < current->n && current->values[l].first == k) {
-      return std::make_optional(
+      return OPTIONAL_NS::make_optional(
           std::reference_wrapper<MappedType>{current->values[l].second});
     }
     current = current->children[l];
   }
-  return std::nullopt;
+  return OPTIONAL_NS::nullopt;
 }
 
 template <class KeyType, class MappedType, int kDegree>

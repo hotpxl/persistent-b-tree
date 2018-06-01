@@ -16,7 +16,7 @@ int main() {
   root = Remove(root, 86);
   root = Remove(root, 85);
   for (int i = 0; i < 80; ++i) {
-    assert(Find(root, i).value() == i * 100);
+    assert(*Find(root, i) == i * 100);
     root = Remove(root, i);
     roots.push_back(root);
   }
