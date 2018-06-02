@@ -61,6 +61,23 @@
 //   std::cout << "no remove false negatives" << std::endl;
 // }
 
+// from http://thispointer.com/find-and-replace-all-occurrences-of-a-sub-string-in-c/
+void replace_all(std::string & data, std::string toSearch, std::string replaceStr)
+{
+  // Get the first occurrence
+  size_t pos = data.find(toSearch);
+ 
+  // Repeat till end is reached
+  while( pos != std::string::npos)
+  {
+    // Replace this occurrence of Sub String
+    data.replace(pos, toSearch.size(), replaceStr);
+    // Get the next occurrence from the current position
+    pos =data.find(toSearch, pos + toSearch.size());
+  }
+}
+
+
 // .................
 // start DOMNode class
 // .................
@@ -114,6 +131,11 @@ void DOMNode::add_child(DOMNode *child) {
 }
 
 void DOMNode::add_attr(std::string name, std::string value) {
+  replace_all(value, "\"", "&quot;");
+  replace_all(value, "<", "&lt;");
+  replace_all(value, ">", "&gt;");
+  replace_all(value, "&", "&amp;");
+  replace_all(value, "'", "&#39;");
   attrs.push_back(std::make_pair(name, value));
 }
 
