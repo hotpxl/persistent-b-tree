@@ -78,14 +78,14 @@ public:
   void hash();
   std::string info();
   std::vector<DOMNode *> children;
+  std::string tag;
+  std::vector<std::pair<std::string, std::string> > attrs;
+  std::string text; // only if node is GumboText
 
 private:
   size_t hash_value;
   bool hash_computed;
-  std::string tag;
   // size_t type;
-  std::string text; // only if node is GumboText
-  std::vector<std::pair<std::string, std::string> > attrs;
 };
 
 
@@ -212,18 +212,31 @@ _init_persistent_tree(DOMNode *root,
 }
 
 static std::shared_ptr<Node<size_t, DOMNode *, 2>>
-init_persistent_tree(DOMNode *root) {
-  std::set<size_t> hashes;
+init_persistent_tree(DOMNode *root, std::set<size_t> &hashes) {
   std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root;
   persistent_root = _init_persistent_tree(root, persistent_root, hashes);
 
-  for (std::set<size_t>::iterator it=hashes.begin(); it!=hashes.end(); ++it) {
-    assert(Find(persistent_root, *it) != OPTIONAL_NS::nullopt);
-    DOMNode *node = *Find(persistent_root, *it);
-    std::cout << node->info() << std::endl;
-  }
-
   return persistent_root;
+}
+
+// may not be exact
+static std::string create_html_str(DOMNode *root) {
+  if (root->tag == "") {
+    return root->text;
+  } else {
+    std::string html_str;
+    html_str.append("<" + root->tag + " "); // open
+    // attrs
+    for (size_t i = 0; i < root->attrs.size(); i++) {
+      html_str.append(root->attrs[i].first + "=\"" + root->attrs[i].second + "\" ");
+    }
+    html_str.append(">");
+    for (size_t i = 0; i < root->children.size(); i++) {
+      html_str.append(create_html_str(root->children[i]));
+    }
+    html_str.append("</" + root->tag + ">");
+    return html_str;
+  }
 }
 
 int main(int argc, const char** argv) {
@@ -247,7 +260,9 @@ int main(int argc, const char** argv) {
       &kGumboDefaultOptions, input, input_length);
 
   DOMNode *root = load_dom(output->root);
-  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root = init_persistent_tree(root);
+  std::set<size_t> hashes;
+  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root = init_persistent_tree(root, hashes);
+  std::cout << create_html_str(root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output);
   free(input);
