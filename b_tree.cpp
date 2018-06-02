@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <set>
+#include <unordered_map>
 
 #include <iostream>
 #include <functional>
@@ -179,13 +180,14 @@ class DOMTree
 public:
   DOMTree(DOMNode *dom_root, std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root);
   ~DOMTree();
+  std::unordered_map<size_t, DOMNode *> get_hashes_map();
+  DOMNode *get_node(size_t hash);
 
   DOMNode *dom_root;
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
-// private:
-//   void init_hashes(DOMNode *node);
+private:
+  void _get_hashes_map(DOMNode *node, std::unordered_map<size_t, DOMNode *> &hashes);
 };
-
 
 DOMTree::DOMTree(DOMNode *dom_root,
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
@@ -193,13 +195,21 @@ DOMTree::DOMTree(DOMNode *dom_root,
   this->persistent_root = persistent_root;
 }
 
-// void DOMTree::init_hashes(DOMNode *node) {
-  // hashes.insert(node->get_hash());
+void DOMTree::_get_hashes_map(DOMNode *node, std::unordered_map<size_t, DOMNode *> &hashes_map) {
+  if (node == NULL) return;
 
-  // for (size_t i = 0; i < node->children.size(); i++) {
-  //   init_hashes(node->children[i]);
-  // }
-// }
+  hashes_map.insert(std::make_pair(node->get_hash(), node));
+
+  for (size_t i = 0; i < node->children.size(); i++) {
+    _get_hashes_map(node->children[i], hashes_map);
+  }
+}
+
+std::unordered_map<size_t, DOMNode *> DOMTree::get_hashes_map() {
+  std::unordered_map<size_t, DOMNode *> hashes_map;
+  _get_hashes_map(dom_root, hashes_map);
+  return hashes_map;
+}
 
 DOMTree::~DOMTree() {
 }
@@ -221,62 +231,111 @@ static void read_file(FILE* fp, char** output, int* length) {
   }
 }
 
-static DOMTree persistent_tree_insert_or_free(DOMNode *node,
-    std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
+// static DOMTree persistent_tree_insert_or_free(DOMNode *node,
+//     std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
 
-  DOMNode *result_node;
-  if (Find(persistent_root, node->get_hash()) == OPTIONAL_NS::nullopt) {
-    result_node = node;
-    persistent_root = Insert(persistent_root, std::make_pair(node->get_hash(), node));
-  } else {
-    result_node = *Find(persistent_root, node->get_hash()); // TODO only make this call once
-    delete node;
+//   DOMNode *result_node;
+//   if (Find(persistent_root, node->get_hash()) == OPTIONAL_NS::nullopt) {
+//     result_node = node;
+//     persistent_root = Insert(persistent_root, std::make_pair(node->get_hash(), node));
+//   } else {
+//     result_node = *Find(persistent_root, node->get_hash()); // TODO only make this call once
+//     delete node;
+//   }
+//   return DOMTree(result_node, persistent_root);
+// }
+
+static int indexOf(std::vector<DOMNode *> &nodes, DOMNode *target_node) {
+  for (size_t i = 0; i < nodes.size(); i++) {
+    if (nodes[i] == target_node) return i;
   }
-  return DOMTree(result_node, persistent_root);
+  assert(false);
+  return -1;
 }
 
-static DOMTree merge_dom_with_persistent_tree(const GumboNode *gumbo_root,
-        std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
+static std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>>
+merge_new_nodes(DOMNode *dom_parent,
+                DOMNode *dom_child,
+                std::unordered_map<size_t, DOMNode *> &original_hashes_map,
+                std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root) {
+  assert(dom_parent != NULL);
+  // traverse to leaf first
+  for (size_t i = 0; i < dom_child->children.size(); i++) {
+    current_root = merge_new_nodes(dom_child, dom_child->children[i], original_hashes_map, current_root);
+  }
 
-  assert(gumbo_root->type == GUMBO_NODE_ELEMENT);
+  // if dom_child not in tree, add it
+  auto result = original_hashes_map.find(dom_child->get_hash());
+  if (result == original_hashes_map.end()) {
+    // add
+    current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
+  } else {
+    // delete child and repoint parent
+    DOMNode *existing_node = *Find(current_root, result->first);
+    // get index of dom_child
+    int child_idx = indexOf(dom_parent->children, dom_child);
+    dom_parent->children[child_idx] = existing_node;
+    delete dom_child;
+  }
+
+  return current_root;
+}
+
+static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &original_tree) {
+  DOMTree new_tree = DOMTree(dom_root, original_tree.persistent_root);
+  std::unordered_map<size_t, DOMNode *> original_hashes_map = original_tree.get_hashes_map();
+  std::unordered_map<size_t, DOMNode *> new_hashes_map = new_tree.get_hashes_map();
+  std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root = original_tree.persistent_root;
+  // remove elements from persistent tree that are no longer there
+  for (auto it=original_hashes_map.begin(); it!=original_hashes_map.end(); ++it) {
+    auto result = new_hashes_map.find(it->first);
+    if (result == new_hashes_map.end()) {
+      current_root = Remove(current_root, result->first);
+    }
+  }
+  // add all new elements, delete duplicates and redo child pointers
+  for (size_t i = 0; i < dom_root->children.size(); i++) {
+    current_root = merge_new_nodes(dom_root, dom_root->children[i], original_hashes_map, current_root);
+  }
+
+  new_tree.persistent_root = current_root;
+
+  return new_tree;
+}
+
+
+static DOMNode *load_dom(const GumboNode* root) {
+  assert(root->type == GUMBO_NODE_ELEMENT);
 
   // init node
   DOMNode *node = new DOMNode();
-  node->set_tag(gumbo_normalized_tagname(gumbo_root->v.element.tag));
+  node->set_tag(gumbo_normalized_tagname(root->v.element.tag));
 
-  // add attrs
-  const GumboVector* attrs = &gumbo_root->v.element.attributes;
+  const GumboVector* attrs = &root->v.element.attributes;
   for (size_t i = 0; i < attrs->length; i++) {
     GumboAttribute* attr = (GumboAttribute *)attrs->data[i];
     node->add_attr(attr->name, attr->value);
   }
 
-  // add children
-  const GumboVector* root_children = &gumbo_root->v.element.children;
+  const GumboVector* root_children = &root->v.element.children;
   for (size_t i = 0; i < root_children->length; ++i) {
     GumboNode* child = (GumboNode*)root_children->data[i];
+    DOMNode *child_node;
     if (child->type == GUMBO_NODE_ELEMENT) {
       // recurse
-      DOMTree child_tree = merge_dom_with_persistent_tree(child, persistent_root);
-      persistent_root = child_tree.persistent_root;
-      node->add_child(child_tree.dom_root);
+      child_node = load_dom(child);
     } else {
       // no recurse
-      // create child 
-      DOMNode *child_node = new DOMNode();
+      child_node = new DOMNode();
       child_node->set_text(child->v.text.text);
       child_node->hash();
-      // add to persistent tree
-      DOMTree child_tree = persistent_tree_insert_or_free(child_node, persistent_root);
-      persistent_root = child_tree.persistent_root;
-      node->add_child(child_tree.dom_root);
     }
+    node->add_child(child_node);
   }
 
   node->hash();
-  return persistent_tree_insert_or_free(node, persistent_root);
+  return node;
 }
-
 
 // may not be exact
 static std::string create_html_str(DOMNode *root) {
@@ -298,14 +357,13 @@ static std::string create_html_str(DOMNode *root) {
   }
 }
 
-
 int main(int argc, const char** argv) {
-  if (argc != 3) {
+  if (argc != 2) {
     printf("Usage: get_title <html filename> <html filename>.\n");
     exit(EXIT_FAILURE);
   }
   const char* filename1 = argv[1];
-  const char* filename2 = argv[2];
+  // const char* filename2 = argv[2];
 
   FILE* fp1 = fopen(filename1, "r");
   if (!fp1) {
@@ -316,29 +374,32 @@ int main(int argc, const char** argv) {
   int input_length1;
   read_file(fp1, &input1, &input_length1);
 
-  FILE* fp2 = fopen(filename2, "r");
-  if (!fp2) {
-    printf("File %s not found!\n", filename2);
-    exit(EXIT_FAILURE);
-  }
-  char* input2;
-  int input_length2;
-  read_file(fp2, &input2, &input_length2);
+  // FILE* fp2 = fopen(filename2, "r");
+  // if (!fp2) {
+  //   printf("File %s not found!\n", filename2);
+  //   exit(EXIT_FAILURE);
+  // }
+  // char* input2;
+  // int input_length2;
+  // read_file(fp2, &input2, &input_length2);
 
   GumboOutput* output1 = gumbo_parse_with_options(
       &kGumboDefaultOptions, input1, input_length1);
-  GumboOutput* output2 = gumbo_parse_with_options(
-      &kGumboDefaultOptions, input2, input_length2);
+  // GumboOutput* output2 = gumbo_parse_with_options(
+  //     &kGumboDefaultOptions, input2, input_length2);
 
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
-  DOMTree tree1 = merge_dom_with_persistent_tree(output1->root, persistent_root);
+  DOMTree empty_tree = DOMTree(NULL, persistent_root);
+  DOMNode *dom_root1 = load_dom(output1->root);
+  DOMTree tree1 = merge_dom_with_persistent_tree(dom_root1, empty_tree);
+  std::cout << create_html_str(tree1.dom_root) << std::endl;
 
-  DOMTree tree2 = merge_dom_with_persistent_tree(output2->root, tree1.persistent_root);
-  std::cout << create_html_str(tree2.dom_root) << std::endl;
+  // DOMTree tree2 = merge_dom_with_persistent_tree(output2->root, tree1.persistent_root);
+  // std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
-  gumbo_destroy_output(&kGumboDefaultOptions, output2);
+  // gumbo_destroy_output(&kGumboDefaultOptions, output2);
   free(input1);
-  free(input2);
+  // free(input2);
   return 0;
 }
