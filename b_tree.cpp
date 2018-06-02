@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <set>
 
 #include <iostream>
 #include <functional>
@@ -75,6 +76,8 @@ public:
   void set_tag(std::string tag);
   void set_text(std::string text);
   void hash();
+  std::string info();
+  std::vector<DOMNode *> children;
 
 private:
   size_t hash_value;
@@ -82,7 +85,6 @@ private:
   std::string tag;
   // size_t type;
   std::string text; // only if node is GumboText
-  std::vector<DOMNode *> children;
   std::vector<std::pair<std::string, std::string> > attrs;
 };
 
@@ -92,6 +94,19 @@ DOMNode::DOMNode() {
 }
 
 DOMNode::~DOMNode() {
+}
+
+std::string DOMNode::info() {
+  std::string info_blob = "<tag: " + tag + ", " + std::to_string(hash_value);
+  info_blob.append(", #children: " + std::to_string(children.size()));
+  info_blob.append(", text: " + text);
+  info_blob.append(", attrs: [");
+  for (size_t i = 0; i < attrs.size(); i++) {
+    info_blob.append("(" + attrs[i].first + ":" + attrs[i].second + "),");
+  }
+  info_blob.append("]");
+  info_blob.append(">");
+  return info_blob;
 }
 
 void DOMNode::add_child(DOMNode *child) {
@@ -145,7 +160,7 @@ static void read_file(FILE* fp, char** output, int* length) {
   }
 }
 
-static DOMNode *traverse(const GumboNode* root) {
+static DOMNode *load_dom(const GumboNode* root) {
   if (root->type != GUMBO_NODE_ELEMENT) {
     std::cout << (root->type == GUMBO_NODE_WHITESPACE) << std::endl;
     exit(0);
@@ -153,6 +168,7 @@ static DOMNode *traverse(const GumboNode* root) {
 
   // init node
   DOMNode *node = new DOMNode();
+  node->set_tag(gumbo_normalized_tagname(root->v.element.tag));
 
   const GumboVector* attrs = &root->v.element.attributes;
   for (size_t i = 0; i < attrs->length; i++) {
@@ -166,7 +182,7 @@ static DOMNode *traverse(const GumboNode* root) {
     DOMNode *child_node;
     if (child->type == GUMBO_NODE_ELEMENT) {
       // recurse
-      child_node = traverse(child);
+      child_node = load_dom(child);
     } else {
       // no recurse
       child_node = new DOMNode();
@@ -178,6 +194,36 @@ static DOMNode *traverse(const GumboNode* root) {
 
   node->hash();
   return node;
+}
+
+static std::shared_ptr<Node<size_t, DOMNode *, 2>>
+_init_persistent_tree(DOMNode *root,
+                      std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root,
+                      std::set<size_t> &hashes) {
+
+  hashes.insert(root->get_hash());
+  persistent_root = Insert(persistent_root, std::make_pair(root->get_hash(), root));
+
+  for (size_t i = 0; i < root->children.size(); i++) {
+    persistent_root = _init_persistent_tree(root->children[i], persistent_root, hashes);
+  }
+
+  return persistent_root;
+}
+
+static std::shared_ptr<Node<size_t, DOMNode *, 2>>
+init_persistent_tree(DOMNode *root) {
+  std::set<size_t> hashes;
+  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root;
+  persistent_root = _init_persistent_tree(root, persistent_root, hashes);
+
+  for (std::set<size_t>::iterator it=hashes.begin(); it!=hashes.end(); ++it) {
+    assert(Find(persistent_root, *it) != OPTIONAL_NS::nullopt);
+    DOMNode *node = *Find(persistent_root, *it);
+    std::cout << node->info() << std::endl;
+  }
+
+  return persistent_root;
 }
 
 int main(int argc, const char** argv) {
@@ -200,7 +246,8 @@ int main(int argc, const char** argv) {
   GumboOutput* output = gumbo_parse_with_options(
       &kGumboDefaultOptions, input, input_length);
 
-  traverse(output->root);
+  DOMNode *root = load_dom(output->root);
+  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root = init_persistent_tree(root);
 
   gumbo_destroy_output(&kGumboDefaultOptions, output);
   free(input);
