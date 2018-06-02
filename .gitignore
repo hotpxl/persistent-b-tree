@@ -1,3 +1,6 @@
+*.dSYM/
+b_tree
+
 # Prerequisites
 *.d
 
