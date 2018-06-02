@@ -290,7 +290,7 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
   for (auto it=original_hashes_map.begin(); it!=original_hashes_map.end(); ++it) {
     auto result = new_hashes_map.find(it->first);
     if (result == new_hashes_map.end()) {
-      current_root = Remove(current_root, result->first);
+      current_root = Remove(current_root, it->first);
     }
   }
   // add all new elements, delete duplicates and redo child pointers
@@ -358,12 +358,12 @@ static std::string create_html_str(DOMNode *root) {
 }
 
 int main(int argc, const char** argv) {
-  if (argc != 2) {
+  if (argc != 3) {
     printf("Usage: get_title <html filename> <html filename>.\n");
     exit(EXIT_FAILURE);
   }
   const char* filename1 = argv[1];
-  // const char* filename2 = argv[2];
+  const char* filename2 = argv[2];
 
   FILE* fp1 = fopen(filename1, "r");
   if (!fp1) {
@@ -374,32 +374,35 @@ int main(int argc, const char** argv) {
   int input_length1;
   read_file(fp1, &input1, &input_length1);
 
-  // FILE* fp2 = fopen(filename2, "r");
-  // if (!fp2) {
-  //   printf("File %s not found!\n", filename2);
-  //   exit(EXIT_FAILURE);
-  // }
-  // char* input2;
-  // int input_length2;
-  // read_file(fp2, &input2, &input_length2);
+  FILE* fp2 = fopen(filename2, "r");
+  if (!fp2) {
+    printf("File %s not found!\n", filename2);
+    exit(EXIT_FAILURE);
+  }
+  char* input2;
+  int input_length2;
+  read_file(fp2, &input2, &input_length2);
 
   GumboOutput* output1 = gumbo_parse_with_options(
       &kGumboDefaultOptions, input1, input_length1);
-  // GumboOutput* output2 = gumbo_parse_with_options(
-  //     &kGumboDefaultOptions, input2, input_length2);
+  GumboOutput* output2 = gumbo_parse_with_options(
+      &kGumboDefaultOptions, input2, input_length2);
 
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
+
   DOMNode *dom_root1 = load_dom(output1->root);
   DOMTree tree1 = merge_dom_with_persistent_tree(dom_root1, empty_tree);
-  std::cout << create_html_str(tree1.dom_root) << std::endl;
+  // std::cout << create_html_str(tree1.dom_root) << std::endl;
+  // std::cout << "starting tree 2" << std::endl;
 
-  // DOMTree tree2 = merge_dom_with_persistent_tree(output2->root, tree1.persistent_root);
-  // std::cout << create_html_str(tree2.dom_root) << std::endl;
+  DOMNode *dom_root2 = load_dom(output2->root);
+  DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
+  std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
-  // gumbo_destroy_output(&kGumboDefaultOptions, output2);
+  gumbo_destroy_output(&kGumboDefaultOptions, output2);
   free(input1);
-  // free(input2);
+  free(input2);
   return 0;
 }
