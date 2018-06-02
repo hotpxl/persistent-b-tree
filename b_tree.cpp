@@ -256,22 +256,23 @@ static int indexOf(std::vector<DOMNode *> &nodes, DOMNode *target_node) {
 static std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>>
 merge_new_nodes(DOMNode *dom_parent,
                 DOMNode *dom_child,
-                std::unordered_map<size_t, DOMNode *> &original_hashes_map,
                 std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root) {
   assert(dom_parent != NULL);
   // traverse to leaf first
   for (size_t i = 0; i < dom_child->children.size(); i++) {
-    current_root = merge_new_nodes(dom_child, dom_child->children[i], original_hashes_map, current_root);
+    current_root = merge_new_nodes(dom_child, dom_child->children[i], current_root);
   }
+  std::cout << "node" << std::endl;
 
   // if dom_child not in tree, add it
-  auto result = original_hashes_map.find(dom_child->get_hash());
-  if (result == original_hashes_map.end()) {
+  if (Find(current_root, dom_child->get_hash()) == OPTIONAL_NS::nullopt) {
     // add
     current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
+    std::cout << "inserting" << std::endl;
   } else {
     // delete child and repoint parent
-    DOMNode *existing_node = *Find(current_root, result->first);
+    DOMNode *existing_node = *Find(current_root, dom_child->get_hash());
+    assert(existing_node->get_hash() == dom_child->get_hash());
     // get index of dom_child
     int child_idx = indexOf(dom_parent->children, dom_child);
     dom_parent->children[child_idx] = existing_node;
@@ -287,15 +288,26 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
   std::unordered_map<size_t, DOMNode *> new_hashes_map = new_tree.get_hashes_map();
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root = original_tree.persistent_root;
   // remove elements from persistent tree that are no longer there
+  int remove_cnt = 0;
   for (auto it=original_hashes_map.begin(); it!=original_hashes_map.end(); ++it) {
     auto result = new_hashes_map.find(it->first);
     if (result == new_hashes_map.end()) {
       current_root = Remove(current_root, it->first);
+      remove_cnt++;
     }
   }
+  std::cout << "original_size: " << original_hashes_map.size() << ", new_size: " << new_hashes_map.size() << std::endl;
+  std::cout << "removed: " << remove_cnt << std::endl;
   // add all new elements, delete duplicates and redo child pointers
   for (size_t i = 0; i < dom_root->children.size(); i++) {
-    current_root = merge_new_nodes(dom_root, dom_root->children[i], original_hashes_map, current_root);
+    current_root = merge_new_nodes(dom_root, dom_root->children[i], current_root);
+  }
+  if (Find(current_root, dom_root->get_hash()) == OPTIONAL_NS::nullopt) {
+    current_root = Insert(current_root, std::make_pair(dom_root->get_hash(), dom_root));
+  } else {
+    DOMNode *existing_node = *Find(current_root, dom_root->get_hash());
+    delete dom_root;
+    new_tree.dom_root = existing_node;
   }
 
   new_tree.persistent_root = current_root;
@@ -398,7 +410,7 @@ int main(int argc, const char** argv) {
 
   DOMNode *dom_root2 = load_dom(output2->root);
   DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
-  std::cout << create_html_str(tree2.dom_root) << std::endl;
+  // std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
   gumbo_destroy_output(&kGumboDefaultOptions, output2);
