@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
+#include <iostream>
+#include <functional>
+#include <string>
+
 // static void test() {
 //   std::shared_ptr<Node<std::string, std::string, 20>> current_root;
 //   std::vector<std::shared_ptr<Node<std::string, std::string, 20>>> tree_history;
@@ -56,6 +60,78 @@
 //   std::cout << "no remove false negatives" << std::endl;
 // }
 
+// .................
+// start DOMNode class
+// .................
+class DOMNode
+{
+public:
+  DOMNode();
+  ~DOMNode();
+  
+  size_t get_hash();
+  void add_child(DOMNode *child);
+  void add_attr(std::string name, std::string value);
+  void set_tag(std::string tag);
+  void set_text(std::string text);
+  void hash();
+
+private:
+  size_t hash_value;
+  bool hash_computed;
+  std::string tag;
+  // size_t type;
+  std::string text; // only if node is GumboText
+  std::vector<DOMNode *> children;
+  std::vector<std::pair<std::string, std::string> > attrs;
+};
+
+
+DOMNode::DOMNode() {
+  hash_computed = false;
+}
+
+DOMNode::~DOMNode() {
+}
+
+void DOMNode::add_child(DOMNode *child) {
+  children.push_back(child);
+}
+
+void DOMNode::add_attr(std::string name, std::string value) {
+  attrs.push_back(std::make_pair(name, value));
+}
+
+void DOMNode::set_tag(std::string tag) {
+  this->tag = tag;
+}
+
+void DOMNode::set_text(std::string text) {
+  this->text = text;
+}
+
+void DOMNode::hash() {
+  std::string text_blob;
+  text_blob.append(tag);
+  text_blob.append(text);
+  for (size_t i = 0; i < children.size(); i++) {
+    text_blob.append(std::to_string(children[i]->get_hash()));
+  }
+  for (size_t i = 0; i < attrs.size(); i++) {
+    text_blob.append(attrs[i].first + ":" + attrs[i].second);
+  }
+  hash_value = std::hash<std::string>{}(text_blob);
+  hash_computed = true;
+}
+
+size_t DOMNode::get_hash() {
+  assert(hash_computed);
+  return hash_value;
+}
+// .................
+// end DOMNode class
+// .................
+
 static void read_file(FILE* fp, char** output, int* length) {
   struct stat filestats;
   int fd = fileno(fp);
@@ -69,34 +145,39 @@ static void read_file(FILE* fp, char** output, int* length) {
   }
 }
 
-static const char* find_title(const GumboNode* root) {
-  assert(root->type == GUMBO_NODE_ELEMENT);
-  assert(root->v.element.children.length >= 2);
+static DOMNode *traverse(const GumboNode* root) {
+  if (root->type != GUMBO_NODE_ELEMENT) {
+    std::cout << (root->type == GUMBO_NODE_WHITESPACE) << std::endl;
+    exit(0);
+  }
+
+  // init node
+  DOMNode *node = new DOMNode();
+
+  const GumboVector* attrs = &root->v.element.attributes;
+  for (size_t i = 0; i < attrs->length; i++) {
+    GumboAttribute* attr = (GumboAttribute *)attrs->data[i];
+    node->add_attr(attr->name, attr->value);
+  }
 
   const GumboVector* root_children = &root->v.element.children;
-  // GumboNode* head = NULL;
   for (size_t i = 0; i < root_children->length; ++i) {
     GumboNode* child = (GumboNode*)root_children->data[i];
-    std::cout << gumbo_normalized_tagname(child->v.element.tag) << ", # children: " << child->v.element.children.length << std::endl;
-    if (child->type == GUMBO_NODE_ELEMENT &&
-        child->v.element.tag == GUMBO_TAG_BODY) {
-        const GumboVector* body_children = &child->v.element.children;
-        for (size_t j = 0; j < body_children->length; j++) {
-          GumboNode* bodyChild = (GumboNode*)body_children->data[j];
-          // std::cout << bodyChild << std::endl;
-          std::cout << gumbo_normalized_tagname(bodyChild->v.element.tag);
-          GumboNode* c = (GumboNode*)bodyChild->v.element.children.data[0];
-          std::cout << " " << (c->type == GUMBO_NODE_TEXT) << " " << c->v.text.text << std::endl;
-        }
+    DOMNode *child_node;
+    if (child->type == GUMBO_NODE_ELEMENT) {
+      // recurse
+      child_node = traverse(child);
+    } else {
+      // no recurse
+      child_node = new DOMNode();
+      child_node->set_text(child->v.text.text);
+      child_node->hash();
     }
-    // if (child->type == GUMBO_NODE_ELEMENT &&
-    //     child->v.element.tag == GUMBO_TAG_HEAD) {
-    //   head = child;
-    //   break;
-    // }
+    node->add_child(child_node);
   }
-  
-  return "<no title found>";
+
+  node->hash();
+  return node;
 }
 
 int main(int argc, const char** argv) {
@@ -115,10 +196,12 @@ int main(int argc, const char** argv) {
   char* input;
   int input_length;
   read_file(fp, &input, &input_length);
+
   GumboOutput* output = gumbo_parse_with_options(
       &kGumboDefaultOptions, input, input_length);
 
-  // std::cout << find_title(output->root) << std::endl;
+  traverse(output->root);
+
   gumbo_destroy_output(&kGumboDefaultOptions, output);
   free(input);
   return 0;
