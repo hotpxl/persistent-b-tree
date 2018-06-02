@@ -262,13 +262,13 @@ merge_new_nodes(DOMNode *dom_parent,
   for (size_t i = 0; i < dom_child->children.size(); i++) {
     current_root = merge_new_nodes(dom_child, dom_child->children[i], current_root);
   }
-  std::cout << "node" << std::endl;
+  // std::cout << "node" << std::endl;
 
   // if dom_child not in tree, add it
   if (Find(current_root, dom_child->get_hash()) == OPTIONAL_NS::nullopt) {
     // add
     current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
-    std::cout << "inserting" << std::endl;
+    // std::cout << "inserting" << std::endl;
   } else {
     // delete child and repoint parent
     DOMNode *existing_node = *Find(current_root, dom_child->get_hash());
@@ -296,8 +296,8 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
       remove_cnt++;
     }
   }
-  std::cout << "original_size: " << original_hashes_map.size() << ", new_size: " << new_hashes_map.size() << std::endl;
-  std::cout << "removed: " << remove_cnt << std::endl;
+  // std::cout << "original_size: " << original_hashes_map.size() << ", new_size: " << new_hashes_map.size() << std::endl;
+  // std::cout << "removed: " << remove_cnt << std::endl;
   // add all new elements, delete duplicates and redo child pointers
   for (size_t i = 0; i < dom_root->children.size(); i++) {
     current_root = merge_new_nodes(dom_root, dom_root->children[i], current_root);
@@ -410,7 +410,7 @@ int main(int argc, const char** argv) {
 
   DOMNode *dom_root2 = load_dom(output2->root);
   DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
-  // std::cout << create_html_str(tree2.dom_root) << std::endl;
+  std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
   gumbo_destroy_output(&kGumboDefaultOptions, output2);
