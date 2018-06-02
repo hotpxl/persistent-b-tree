@@ -408,13 +408,19 @@ int main(int argc, const char** argv) {
   // std::cout << create_html_str(tree1.dom_root) << std::endl;
   // std::cout << "starting tree 2" << std::endl;
 
-  DOMNode *dom_root2 = load_dom(output2->root);
-  DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
-  std::cout << create_html_str(tree2.dom_root) << std::endl;
+  for (size_t i = 0; i < 10000; i++) {
+    DOMNode *dom_root2 = load_dom(output2->root);
+    DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
+  }
+  
+  // std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
   gumbo_destroy_output(&kGumboDefaultOptions, output2);
   free(input1);
   free(input2);
+
+  std::cout << "done";
+  getchar();
   return 0;
 }
