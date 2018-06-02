@@ -1,5 +1,9 @@
 #include "b_tree.h"
 #include "gumbo.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+
 // static void test() {
 //   std::shared_ptr<Node<std::string, std::string, 20>> current_root;
 //   std::vector<std::shared_ptr<Node<std::string, std::string, 20>>> tree_history;
@@ -52,6 +56,18 @@
 //   std::cout << "no remove false negatives" << std::endl;
 // }
 
+static void read_file(FILE* fp, char** output, int* length) {
+  struct stat filestats;
+  int fd = fileno(fp);
+  fstat(fd, &filestats);
+  *length = filestats.st_size;
+  *output = (char *)malloc(*length + 1);
+  int start = 0;
+  int bytes_read;
+  while ((bytes_read = fread(*output + start, 1, *length - start, fp))) {
+    start += bytes_read;
+  }
+}
 
 static const char* find_title(const GumboNode* root) {
   assert(root->type == GUMBO_NODE_ELEMENT);
@@ -79,27 +95,31 @@ static const char* find_title(const GumboNode* root) {
     //   break;
     // }
   }
-  // assert(head != NULL);
-
-  // GumboVector* head_children = &head->v.element.children;
-  // for (size_t i = 0; i < head_children->length; ++i) {
-  //   GumboNode* child = (GumboNode*)head_children->data[i];
-  //   if (child->type == GUMBO_NODE_ELEMENT &&
-  //       child->v.element.tag == GUMBO_TAG_TITLE) {
-  //     if (child->v.element.children.length != 1) {
-  //       return "<empty title>";
-  //     }
-  //     GumboNode* title_text = (GumboNode*)child->v.element.children.data[0];
-  //     assert(title_text->type == GUMBO_NODE_TEXT || title_text->type == GUMBO_NODE_WHITESPACE);
-  //     return title_text->v.text.text;
-  //   }
-  // }
+  
   return "<no title found>";
 }
 
-int main() {
-  GumboOutput* output = gumbo_parse("<h1>Hello, World!</h1>");
-  std::cout << find_title(output->root) << std::endl;
+int main(int argc, const char** argv) {
+  if (argc != 2) {
+    printf("Usage: get_title <html filename>.\n");
+    exit(EXIT_FAILURE);
+  }
+  const char* filename = argv[1];
+
+  FILE* fp = fopen(filename, "r");
+  if (!fp) {
+    printf("File %s not found!\n", filename);
+    exit(EXIT_FAILURE);
+  }
+
+  char* input;
+  int input_length;
+  read_file(fp, &input, &input_length);
+  GumboOutput* output = gumbo_parse_with_options(
+      &kGumboDefaultOptions, input, input_length);
+
+  // std::cout << find_title(output->root) << std::endl;
   gumbo_destroy_output(&kGumboDefaultOptions, output);
+  free(input);
   return 0;
 }
