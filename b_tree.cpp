@@ -93,11 +93,13 @@ public:
   void set_tag(std::string tag);
   void set_text(std::string text);
   void hash();
+  void set_parent(DOMNode *parent);
   std::string info();
   std::vector<DOMNode *> children;
   std::string tag;
   std::vector<std::pair<std::string, std::string> > attrs;
   std::string text; // only if node is GumboText
+  DOMNode *parent;
 
 private:
   size_t hash_value;
@@ -108,9 +110,14 @@ private:
 
 DOMNode::DOMNode() {
   hash_computed = false;
+  parent = NULL;
 }
 
 DOMNode::~DOMNode() {
+}
+
+void DOMNode::set_parent(DOMNode *parent) {
+  this->parent = parent;
 }
 
 std::string DOMNode::info() {
@@ -211,7 +218,9 @@ static DOMNode *load_dom(const GumboNode* root) {
       child_node->set_text(child->v.text.text);
       child_node->hash();
     }
+    // create parent child relationship :)
     node->add_child(child_node);
+    child_node->set_parent(node);
   }
 
   node->hash();
@@ -261,6 +270,13 @@ static std::string create_html_str(DOMNode *root) {
   }
 }
 
+static DOMNode *get_root(DOMNode *node) {
+  while (node->parent != NULL) {
+    node = node->parent;
+  }
+  return node;
+}
+
 int main(int argc, const char** argv) {
   if (argc != 2) {
     printf("Usage: get_title <html filename>.\n");
@@ -284,7 +300,7 @@ int main(int argc, const char** argv) {
   DOMNode *root = load_dom(output->root);
   std::set<size_t> hashes;
   std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root = init_persistent_tree(root, hashes);
-  std::cout << create_html_str(root) << std::endl;
+  std::cout << create_html_str(get_root(persistent_root->values[0].second)) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output);
   free(input);
