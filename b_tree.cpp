@@ -9,6 +9,8 @@
 #include <functional>
 #include <string>
 
+#define B_ELEMS 2
+
 // static void test() {
 //   std::shared_ptr<Node<std::string, std::string, 20>> current_root;
 //   std::vector<std::shared_ptr<Node<std::string, std::string, 20>>> tree_history;
@@ -108,7 +110,6 @@ private:
 
 DOMNode::DOMNode() {
   hash_computed = false;
-  parent = NULL;
 }
 
 DOMNode::~DOMNode() {
@@ -176,28 +177,29 @@ size_t DOMNode::get_hash() {
 class DOMTree
 {
 public:
-  DOMTree(DOMNode *root);
+  DOMTree(DOMNode *dom_root, std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root);
   ~DOMTree();
 
-  DOMNode *root;
-  std::set<size_t> hashes;
-private:
-  void init_hashes(DOMNode *node);
+  DOMNode *dom_root;
+  std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
+// private:
+//   void init_hashes(DOMNode *node);
 };
 
 
-DOMTree::DOMTree(DOMNode *root) {
-  this->root = root;
-  init_hashes(root);
+DOMTree::DOMTree(DOMNode *dom_root,
+  std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
+  this->dom_root = dom_root;
+  this->persistent_root = persistent_root;
 }
 
-void DOMTree::init_hashes(DOMNode *node) {
-  hashes.insert(node->get_hash());
+// void DOMTree::init_hashes(DOMNode *node) {
+  // hashes.insert(node->get_hash());
 
-  for (size_t i = 0; i < node->children.size(); i++) {
-    init_hashes(node->children[i]);
-  }
-}
+  // for (size_t i = 0; i < node->children.size(); i++) {
+  //   init_hashes(node->children[i]);
+  // }
+// }
 
 DOMTree::~DOMTree() {
 }
@@ -219,62 +221,62 @@ static void read_file(FILE* fp, char** output, int* length) {
   }
 }
 
-static DOMNode *load_dom(const GumboNode* root) {
-  if (root->type != GUMBO_NODE_ELEMENT) {
-    std::cout << (root->type == GUMBO_NODE_WHITESPACE) << std::endl;
-    exit(0);
+static DOMTree persistent_tree_insert_or_free(DOMNode *node,
+    std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
+
+  DOMNode *result_node;
+  if (Find(persistent_root, node->get_hash()) == OPTIONAL_NS::nullopt) {
+    result_node = node;
+    persistent_root = Insert(persistent_root, std::make_pair(node->get_hash(), node));
+  } else {
+    result_node = *Find(persistent_root, node->get_hash()); // TODO only make this call once
+    delete node;
   }
+  return DOMTree(result_node, persistent_root);
+}
+
+static DOMTree merge_dom_with_persistent_tree(const GumboNode *gumbo_root,
+        std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
+
+  assert(gumbo_root->type == GUMBO_NODE_ELEMENT);
 
   // init node
   DOMNode *node = new DOMNode();
-  node->set_tag(gumbo_normalized_tagname(root->v.element.tag));
+  node->set_tag(gumbo_normalized_tagname(gumbo_root->v.element.tag));
 
-  const GumboVector* attrs = &root->v.element.attributes;
+  // add attrs
+  const GumboVector* attrs = &gumbo_root->v.element.attributes;
   for (size_t i = 0; i < attrs->length; i++) {
     GumboAttribute* attr = (GumboAttribute *)attrs->data[i];
     node->add_attr(attr->name, attr->value);
   }
 
-  const GumboVector* root_children = &root->v.element.children;
+  // add children
+  const GumboVector* root_children = &gumbo_root->v.element.children;
   for (size_t i = 0; i < root_children->length; ++i) {
     GumboNode* child = (GumboNode*)root_children->data[i];
-    DOMNode *child_node;
     if (child->type == GUMBO_NODE_ELEMENT) {
       // recurse
-      child_node = load_dom(child);
+      DOMTree child_tree = merge_dom_with_persistent_tree(child, persistent_root);
+      persistent_root = child_tree.persistent_root;
+      node->add_child(child_tree.dom_root);
     } else {
       // no recurse
-      child_node = new DOMNode();
+      // create child 
+      DOMNode *child_node = new DOMNode();
       child_node->set_text(child->v.text.text);
       child_node->hash();
+      // add to persistent tree
+      DOMTree child_tree = persistent_tree_insert_or_free(child_node, persistent_root);
+      persistent_root = child_tree.persistent_root;
+      node->add_child(child_tree.dom_root);
     }
-    node->add_child(child_node);
   }
 
   node->hash();
-  return node;
+  return persistent_tree_insert_or_free(node, persistent_root);
 }
 
-static std::shared_ptr<Node<size_t, DOMNode *, 2>>
-_init_persistent_tree(DOMNode *root,
-                      std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root) {
-
-  persistent_root = Insert(persistent_root, std::make_pair(root->get_hash(), root));
-
-  for (size_t i = 0; i < root->children.size(); i++) {
-    persistent_root = _init_persistent_tree(root->children[i], persistent_root);
-  }
-
-  return persistent_root;
-}
-
-static std::shared_ptr<Node<size_t, DOMNode *, 2>>
-init_persistent_tree(DOMNode *root) {
-  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root;
-  persistent_root = _init_persistent_tree(root, persistent_root);
-
-  return persistent_root;
-}
 
 // may not be exact
 static std::string create_html_str(DOMNode *root) {
@@ -296,19 +298,6 @@ static std::string create_html_str(DOMNode *root) {
   }
 }
 
-static std::shared_ptr<Node<size_t, DOMNode *, 2>>
-merge_persistent_tree(DOMTree *tree, std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root) {
-  // generate current version of the tree from persistent root
-  DOMTree *originalTree = new DOMTree(get_root(persistent_root->values[0].second));
-  // remove all elements that are no longer present
-  for (std::set<size_t>::iterator it=originalTree->hashes.begin(); it!=originalTree->hashes.end(); ++it) {
-    if (tree->hashes.find(*it) == tree->hashes.end()) {
-      std::cout << ((DOMNode *) *Find(persistent_root, *it))->children.size() << std::endl;
-      // persistent_root = Remove(persistent_root, *it);
-    }
-  }
-  // add all elements that 
-}
 
 int main(int argc, const char** argv) {
   if (argc != 3) {
@@ -341,11 +330,11 @@ int main(int argc, const char** argv) {
   GumboOutput* output2 = gumbo_parse_with_options(
       &kGumboDefaultOptions, input2, input_length2);
 
-  DOMTree *tree1 = new DOMTree(load_dom(output1->root));
-  std::shared_ptr<Node<size_t, DOMNode *, 2>> persistent_root= init_persistent_tree(tree1->root);
+  std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
+  DOMTree tree1 = merge_dom_with_persistent_tree(output1->root, persistent_root);
 
-  DOMTree *tree2 = new DOMTree(load_dom(output2->root));
-  persistent_root = merge_persistent_tree(tree2, persistent_root);
+  DOMTree tree2 = merge_dom_with_persistent_tree(output2->root, tree1.persistent_root);
+  std::cout << create_html_str(tree2.dom_root) << std::endl;
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
   gumbo_destroy_output(&kGumboDefaultOptions, output2);
