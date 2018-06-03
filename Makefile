@@ -1,4 +1,5 @@
 CXX := clang++
+FORMATTER := clang-format
 CXXFLAGS += -g -Wall -Wextra -std=c++17 -fsanitize=address
 
 b_tree: b_tree.cpp b_tree.h
@@ -7,4 +8,7 @@ b_tree: b_tree.cpp b_tree.h
 clean:
 	rm -rf b_tree b_tree.dSYM
 
-.PHONY: clean
+format:
+	$(FORMATTER) -i -style="Google" $(wildcard *.cpp) $(wildcard *.h)
+
+.PHONY: clean format

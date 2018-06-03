@@ -118,7 +118,7 @@ CopyPath(
       ret;
   std::shared_ptr<Node<KeyType, MappedType, kDegree>> last;
   for (auto i = path.rbegin(); i != path.rend(); ++i) {
-    auto && [ node, index ] = *i;
+    auto&& [node, index] = *i;
     auto new_node = std::make_shared<Node<KeyType, MappedType, kDegree>>(*node);
     new_node->children[index] = std::move(last);
     last = std::move(new_node);
@@ -138,7 +138,7 @@ std::shared_ptr<Node<KeyType, MappedType, kDegree>> FixUnderflow(
   }
   auto old_root = path[0].first;
   while (!path.empty()) {
-    auto[top, _] = std::move(path.back());
+    auto [top, _] = std::move(path.back());
     path.pop_back();
     if (kDegree - 1 <= top->n) {
       return old_root;
@@ -150,7 +150,7 @@ std::shared_ptr<Node<KeyType, MappedType, kDegree>> FixUnderflow(
         return top->children[0];
       }
     }
-    auto[parent, parent_index] = path.back();
+    auto [parent, parent_index] = path.back();
     if (0 < parent_index &&
         kDegree - 1 < parent->children[parent_index - 1]->n) {
       auto sibling = std::make_shared<Node<KeyType, MappedType, kDegree>>(
@@ -202,14 +202,14 @@ std::shared_ptr<Node<KeyType, MappedType, kDegree>> FixOverflow(
   auto old_root = path.empty() ? nullptr : path[0].first;
   std::shared_ptr<Node<KeyType, MappedType, kDegree>> right_child;
   while (!path.empty()) {
-    auto[top, index] = std::move(path.back());
+    auto [top, index] = std::move(path.back());
     path.pop_back();
     if (top->n < 2 * kDegree - 1) {
       top->InsertNoSplit(index, std::move(value), std::move(right_child),
                          false);
       return old_root;
     }
-    auto[right, middle] = top->Split();
+    auto [right, middle] = top->Split();
     if (index <= top->n) {
       top->InsertNoSplit(index, std::move(value), std::move(right_child),
                          false);
