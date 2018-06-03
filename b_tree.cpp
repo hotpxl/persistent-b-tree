@@ -442,31 +442,29 @@ int main(int argc, const char** argv) {
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
   tree_history.push_back(empty_tree);
-  for (size_t j = 0; j < 20; j++) {
-    for (size_t i = 0; i < file_paths.size(); i++) {
-      const char *filename = file_paths[i].c_str();
-      std::cout << "loading: " << filename << std::endl;
-      // open file
-      FILE* fp = fopen(filename, "r");
-      if (!fp) {
-        printf("File %s not found!\n", filename);
-        exit(EXIT_FAILURE);
-      }
-      char* input;
-      int input_length;
-      read_file(fp, &input, &input_length);
-      // parse
-      GumboOutput* output = gumbo_parse_with_options(
-          &kGumboDefaultOptions, input, input_length);
-
-      // convert to DOMTree
-      DOMNode *dom_root = load_dom(output->root);
-      tree_history.push_back(merge_dom_with_persistent_tree(dom_root, tree_history.back()));
-
-      // free
-      gumbo_destroy_output(&kGumboDefaultOptions, output);
-      free(input);
+  for (size_t i = 0; i < file_paths.size(); i++) {
+    const char *filename = file_paths[i].c_str();
+    std::cout << "loading: " << filename << std::endl;
+    // open file
+    FILE* fp = fopen(filename, "r");
+    if (!fp) {
+      printf("File %s not found!\n", filename);
+      exit(EXIT_FAILURE);
     }
+    char* input;
+    int input_length;
+    read_file(fp, &input, &input_length);
+    // parse
+    GumboOutput* output = gumbo_parse_with_options(
+        &kGumboDefaultOptions, input, input_length);
+
+    // convert to DOMTree
+    DOMNode *dom_root = load_dom(output->root);
+    tree_history.push_back(merge_dom_with_persistent_tree(dom_root, tree_history.back()));
+
+    // free
+    gumbo_destroy_output(&kGumboDefaultOptions, output);
+    free(input);
   }
 
   log_estimated_memory_usage(tree_history);
