@@ -5,64 +5,12 @@
 #include <sys/stat.h>
 #include <set>
 #include <unordered_map>
-
+#include <sstream>
 #include <iostream>
 #include <functional>
 #include <string>
 
 #define B_ELEMS 2
-
-// static void test() {
-//   std::shared_ptr<Node<std::string, std::string, 20>> current_root;
-//   std::vector<std::shared_ptr<Node<std::string, std::string, 20>>> tree_history;
-//   std::vector<std::string> values;
-
-//   for (int i = 0; i < 500; i++) {
-//     values.push_back("v" + std::to_string(rand() % 100));
-//     std::string key = "k" + std::to_string(i);
-//     std::cout << "key: " << key << " value: " << values[i] << std::endl;
-//     current_root = Insert(current_root, std::make_pair(key, values[i]));
-//     tree_history.push_back(current_root);
-//   }
-
-//   for (int i = 0; i < 500; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     // std::cout << (std::string) *Find(tree_history[i], key) << std::endl;
-//     assert((std::string) *Find(tree_history[i], key) == values[i]);
-//   }
-//   std::cout << "found all at relative root " << std::endl;
-
-//   for (int i = 0; i < 500; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     assert((std::string)*Find(tree_history[499], key) == values[i]);
-//   }
-//   std::cout << "found all at current root " << std::endl;
-
-//   for (int i = 500; i < 600; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     assert(Find(tree_history[499], key) == OPTIONAL_NS::nullopt);
-//   }
-//   std::cout << "no false positives" << std::endl;
-
-//   // remove 50 - 199 from latest version of the tree
-//   for (int i = 50; i < 200; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     current_root = Remove(current_root, key);
-//   }
-
-//   // ensure that 50 - 199 aren't in latest version of tree
-//   for (int i = 50; i < 200; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     assert(Find(current_root, key) == OPTIONAL_NS::nullopt);
-//   }
-//   std::cout << "no remove false positives" << std::endl;
-
-//   for (int i = 50; i < 200; i++) {
-//     std::string key = "k" + std::to_string(i);
-//     assert((std::string)*Find(tree_history[499], key) == values[i]);
-//   }
-//   std::cout << "no remove false negatives" << std::endl;
-// }
 
 // from http://thispointer.com/find-and-replace-all-occurrences-of-a-sub-string-in-c/
 void replace_all(std::string & data, std::string toSearch, std::string replaceStr)
@@ -231,20 +179,6 @@ static void read_file(FILE* fp, char** output, int* length) {
   }
 }
 
-// static DOMTree persistent_tree_insert_or_free(DOMNode *node,
-//     std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
-
-//   DOMNode *result_node;
-//   if (Find(persistent_root, node->get_hash()) == OPTIONAL_NS::nullopt) {
-//     result_node = node;
-//     persistent_root = Insert(persistent_root, std::make_pair(node->get_hash(), node));
-//   } else {
-//     result_node = *Find(persistent_root, node->get_hash()); // TODO only make this call once
-//     delete node;
-//   }
-//   return DOMTree(result_node, persistent_root);
-// }
-
 static int indexOf(std::vector<DOMNode *> &nodes, DOMNode *target_node) {
   for (size_t i = 0; i < nodes.size(); i++) {
     if (nodes[i] == target_node) return i;
@@ -262,13 +196,11 @@ merge_new_nodes(DOMNode *dom_parent,
   for (size_t i = 0; i < dom_child->children.size(); i++) {
     current_root = merge_new_nodes(dom_child, dom_child->children[i], current_root);
   }
-  // std::cout << "node" << std::endl;
 
   // if dom_child not in tree, add it
   if (Find(current_root, dom_child->get_hash()) == OPTIONAL_NS::nullopt) {
     // add
     current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
-    // std::cout << "inserting" << std::endl;
   } else {
     // delete child and repoint parent
     DOMNode *existing_node = *Find(current_root, dom_child->get_hash());
@@ -296,8 +228,7 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
       remove_cnt++;
     }
   }
-  // std::cout << "original_size: " << original_hashes_map.size() << ", new_size: " << new_hashes_map.size() << std::endl;
-  // std::cout << "removed: " << remove_cnt << std::endl;
+
   // add all new elements, delete duplicates and redo child pointers
   for (size_t i = 0; i < dom_root->children.size(); i++) {
     current_root = merge_new_nodes(dom_root, dom_root->children[i], current_root);
@@ -314,7 +245,6 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
 
   return new_tree;
 }
-
 
 static DOMNode *load_dom(const GumboNode* root) {
   assert(root->type == GUMBO_NODE_ELEMENT);
@@ -369,6 +299,93 @@ static std::string create_html_str(DOMNode *root) {
   }
 }
 
+static void _get_elements_by_attr(DOMNode *root,
+                                  std::string &key,
+                                  std::string &value,
+                                  bool exact_match,
+                                  std::vector<DOMNode *> &matches) {
+  // check match
+  for (size_t i = 0; i < root->attrs.size(); i++) {
+    if (exact_match) {
+      if (root->attrs[i].first == key && root->attrs[i].second == value) {
+        matches.push_back(root);
+      }
+    } else {
+      if (root->attrs[i].first == key && root->attrs[i].second.find(value) != std::string::npos) {
+        matches.push_back(root);
+      }
+    }
+
+  }
+  for (size_t i = 0; i < root->children.size(); i++) {
+    _get_elements_by_attr(root->children[i], key, value, exact_match, matches);
+  }
+}
+
+static std::vector<DOMNode *> get_elements_by_attr(DOMNode *root,
+                                                    std::string key,
+                                                    std::string value,
+                                                    bool exact_match) {
+  std::vector<DOMNode *> matches;
+  _get_elements_by_attr(root, key, value, exact_match, matches);
+  return matches;
+}
+
+static void interactive_query(std::vector<DOMTree> &tree_history) {
+  while (true) {
+    std::cout << "select query type: (q to quit)" << std::endl;
+    std::cout << "1) attr exact match" << std::endl;
+    std::cout << "2) attr contains" << std::endl;
+    std::string ans;
+    std::cin >> ans;
+    bool exact_match;
+    if (ans == "1") {
+      exact_match = true;
+    } else if (ans == "2") {
+      exact_match = false;
+    } else if (ans == "q") {
+      break;
+    } else {
+      continue;
+    }
+
+    std::cout << "select versions [0," << (tree_history.size() - 1) << "] or \"all\": " << std::endl;
+    std::cout << "low: ";
+    std::string low;
+    int low_idx;
+    int high_idx;
+    std::cin >> low;
+    if (low == "all") {
+      low_idx = 0;
+      high_idx = tree_history.size() - 1;
+    } else {
+      std::stringstream low_ss(low);
+      low_ss >> low_idx;
+      std::cout << "high: ";
+      std::cin >> high_idx;  
+    }
+    
+
+    std::string key;
+    std::cout << "key: ";
+    std::cin >> key;
+    if (key == "q") break;
+    std::string value;
+    std::cout << "value: ";
+    std::cin >> value;
+    std::cout << "searching: \"" << key << "\": \"" << value << "\"" << std::endl;
+
+    for (int i = low_idx; i <= high_idx; i++) {
+      std::cout << "============ version: " << i << " =============" << std::endl;
+      std::vector<DOMNode *> matches = get_elements_by_attr(tree_history[i].dom_root, key, value, exact_match);
+      for (size_t i = 0; i < matches.size(); i++) {
+        std::cout << matches[i]->info() << std::endl;
+      }
+      std::cout << "=============" << std::endl;
+    }
+  }
+}
+
 int main(int argc, const char** argv) {
   if (argc != 3) {
     printf("Usage: get_title <html filename> <html filename>.\n");
@@ -400,27 +417,24 @@ int main(int argc, const char** argv) {
   GumboOutput* output2 = gumbo_parse_with_options(
       &kGumboDefaultOptions, input2, input_length2);
 
+  std::vector<DOMTree> tree_histroy;
+
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
 
   DOMNode *dom_root1 = load_dom(output1->root);
   DOMTree tree1 = merge_dom_with_persistent_tree(dom_root1, empty_tree);
-  // std::cout << create_html_str(tree1.dom_root) << std::endl;
-  // std::cout << "starting tree 2" << std::endl;
+  tree_histroy.push_back(tree1);
 
-  for (size_t i = 0; i < 10000; i++) {
-    DOMNode *dom_root2 = load_dom(output2->root);
-    DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
-  }
+  DOMNode *dom_root2 = load_dom(output2->root);
+  DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
+  tree_histroy.push_back(tree2);
   
-  // std::cout << create_html_str(tree2.dom_root) << std::endl;
+  interactive_query(tree_histroy);
 
   gumbo_destroy_output(&kGumboDefaultOptions, output1);
   gumbo_destroy_output(&kGumboDefaultOptions, output2);
   free(input1);
   free(input2);
-
-  std::cout << "done";
-  getchar();
   return 0;
 }
