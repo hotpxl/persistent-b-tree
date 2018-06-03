@@ -9,6 +9,9 @@
 #include <iostream>
 #include <functional>
 #include <string>
+#include <sys/types.h>
+#include <dirent.h>
+#include <fstream>
 
 #define B_ELEMS 2
 
@@ -281,6 +284,7 @@ static DOMNode *load_dom(const GumboNode* root) {
 
 // may not be exact
 static std::string create_html_str(DOMNode *root) {
+  if (root == NULL) return "";
   if (root->tag == "") {
     return root->text;
   } else {
@@ -304,6 +308,7 @@ static void _get_elements_by_attr(DOMNode *root,
                                   std::string &value,
                                   bool exact_match,
                                   std::vector<DOMNode *> &matches) {
+  if (root == NULL) return;
   // check match
   for (size_t i = 0; i < root->attrs.size(); i++) {
     if (exact_match) {
@@ -333,9 +338,10 @@ static std::vector<DOMNode *> get_elements_by_attr(DOMNode *root,
 
 static void interactive_query(std::vector<DOMTree> &tree_history) {
   while (true) {
-    std::cout << "select query type: (q to quit)" << std::endl;
-    std::cout << "1) attr exact match" << std::endl;
-    std::cout << "2) attr contains" << std::endl;
+    std::cout << "select action: (q to quit)" << std::endl;
+    std::cout << "1) query attr exact match" << std::endl;
+    std::cout << "2) query attr contains" << std::endl;
+    std::cout << "3) construct version" << std::endl;
     std::string ans;
     std::cin >> ans;
     bool exact_match;
@@ -343,6 +349,17 @@ static void interactive_query(std::vector<DOMTree> &tree_history) {
       exact_match = true;
     } else if (ans == "2") {
       exact_match = false;
+    } else if (ans == "3") {
+      int version;
+      std::cout << "select version [0," << (tree_history.size() - 1) << "]: ";
+      std::cin >> version;
+      std::ofstream myfile;
+      std::string filename = "version" + std::to_string(version) + ".html";
+      myfile.open (filename);
+      myfile << create_html_str(tree_history[version].dom_root) << std::endl;
+      myfile.close();
+      std::cout << "created file: " << filename << std::endl;
+      continue;
     } else if (ans == "q") {
       break;
     } else {
@@ -387,54 +404,61 @@ static void interactive_query(std::vector<DOMTree> &tree_history) {
 }
 
 int main(int argc, const char** argv) {
-  if (argc != 3) {
-    printf("Usage: get_title <html filename> <html filename>.\n");
+  if (argc != 2) {
+    printf("Usage: b_tree <html director>.\n");
     exit(EXIT_FAILURE);
   }
-  const char* filename1 = argv[1];
-  const char* filename2 = argv[2];
-
-  FILE* fp1 = fopen(filename1, "r");
-  if (!fp1) {
-    printf("File %s not found!\n", filename1);
-    exit(EXIT_FAILURE);
+  std::vector<std::string> file_paths;
+  DIR *dir;
+  struct dirent *ent;
+  const char *dir_name = argv[1];
+  if ((dir = opendir (dir_name)) != NULL) {
+    /* print all the files and directories within directory */
+    while ((ent = readdir (dir)) != NULL) {
+      std::string path = dir_name;
+      path.append(ent->d_name);
+      if (path.find(".htm") != std::string::npos) {
+        file_paths.push_back(path);
+      }
+    }
+    closedir (dir);
+  } else {
+    /* could not open directory */
+    printf("Failed to open dir %s", dir_name);
+    return EXIT_FAILURE;
   }
-  char* input1;
-  int input_length1;
-  read_file(fp1, &input1, &input_length1);
 
-  FILE* fp2 = fopen(filename2, "r");
-  if (!fp2) {
-    printf("File %s not found!\n", filename2);
-    exit(EXIT_FAILURE);
-  }
-  char* input2;
-  int input_length2;
-  read_file(fp2, &input2, &input_length2);
-
-  GumboOutput* output1 = gumbo_parse_with_options(
-      &kGumboDefaultOptions, input1, input_length1);
-  GumboOutput* output2 = gumbo_parse_with_options(
-      &kGumboDefaultOptions, input2, input_length2);
-
-  std::vector<DOMTree> tree_histroy;
-
+  // TODO sort file paths
+  std::vector<DOMTree> tree_history;
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
+  tree_history.push_back(empty_tree);
+  for (size_t i = 0; i < file_paths.size(); i++) {
+    const char *filename = file_paths[i].c_str();
+    std::cout << "loading: " << filename << std::endl;
+    // open file
+    FILE* fp = fopen(filename, "r");
+    if (!fp) {
+      printf("File %s not found!\n", filename);
+      exit(EXIT_FAILURE);
+    }
+    char* input;
+    int input_length;
+    read_file(fp, &input, &input_length);
+    // parse
+    GumboOutput* output = gumbo_parse_with_options(
+        &kGumboDefaultOptions, input, input_length);
 
-  DOMNode *dom_root1 = load_dom(output1->root);
-  DOMTree tree1 = merge_dom_with_persistent_tree(dom_root1, empty_tree);
-  tree_histroy.push_back(tree1);
+    // convert to DOMTree
+    DOMNode *dom_root = load_dom(output->root);
+    tree_history.push_back(merge_dom_with_persistent_tree(dom_root, tree_history.back()));
 
-  DOMNode *dom_root2 = load_dom(output2->root);
-  DOMTree tree2 = merge_dom_with_persistent_tree(dom_root2, tree1);
-  tree_histroy.push_back(tree2);
-  
-  interactive_query(tree_histroy);
+    // free
+    gumbo_destroy_output(&kGumboDefaultOptions, output);
+    free(input);
+  }
 
-  gumbo_destroy_output(&kGumboDefaultOptions, output1);
-  gumbo_destroy_output(&kGumboDefaultOptions, output2);
-  free(input1);
-  free(input2);
+  interactive_query(tree_history);
+
   return 0;
 }
