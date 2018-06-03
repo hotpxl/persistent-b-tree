@@ -135,6 +135,7 @@ public:
   DOMNode *get_node(size_t hash);
 
   DOMNode *dom_root;
+  size_t num_nodes_added;
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
 private:
   void _get_hashes_map(DOMNode *node, std::unordered_map<size_t, DOMNode *> &hashes);
@@ -144,6 +145,7 @@ DOMTree::DOMTree(DOMNode *dom_root,
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root) {
   this->dom_root = dom_root;
   this->persistent_root = persistent_root;
+  num_nodes_added = 0;
 }
 
 void DOMTree::_get_hashes_map(DOMNode *node, std::unordered_map<size_t, DOMNode *> &hashes_map) {
@@ -193,17 +195,19 @@ static int indexOf(std::vector<DOMNode *> &nodes, DOMNode *target_node) {
 static std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>>
 merge_new_nodes(DOMNode *dom_parent,
                 DOMNode *dom_child,
-                std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root) {
+                std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root,
+                size_t &num_nodes_added) {
   assert(dom_parent != NULL);
   // traverse to leaf first
   for (size_t i = 0; i < dom_child->children.size(); i++) {
-    current_root = merge_new_nodes(dom_child, dom_child->children[i], current_root);
+    current_root = merge_new_nodes(dom_child, dom_child->children[i], current_root, num_nodes_added);
   }
 
   // if dom_child not in tree, add it
   if (Find(current_root, dom_child->get_hash()) == OPTIONAL_NS::nullopt) {
     // add
     current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
+    num_nodes_added++;
   } else {
     // delete child and repoint parent
     DOMNode *existing_node = *Find(current_root, dom_child->get_hash());
@@ -227,17 +231,18 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
   for (auto it=original_hashes_map.begin(); it!=original_hashes_map.end(); ++it) {
     auto result = new_hashes_map.find(it->first);
     if (result == new_hashes_map.end()) {
-      current_root = Remove(current_root, it->first);
+      current_root = Remove(current_root, it->first); // TODO do i actually need this?
       remove_cnt++;
     }
   }
 
   // add all new elements, delete duplicates and redo child pointers
   for (size_t i = 0; i < dom_root->children.size(); i++) {
-    current_root = merge_new_nodes(dom_root, dom_root->children[i], current_root);
+    current_root = merge_new_nodes(dom_root, dom_root->children[i], current_root, new_tree.num_nodes_added);
   }
   if (Find(current_root, dom_root->get_hash()) == OPTIONAL_NS::nullopt) {
     current_root = Insert(current_root, std::make_pair(dom_root->get_hash(), dom_root));
+    new_tree.num_nodes_added++;
   } else {
     DOMNode *existing_node = *Find(current_root, dom_root->get_hash());
     delete dom_root;
@@ -403,6 +408,21 @@ static void interactive_query(std::vector<DOMTree> &tree_history) {
   }
 }
 
+static void log_estimated_memory_usage(std::vector<DOMTree> &tree_history) {
+  size_t total_dom_nodes = 0;
+  for (size_t i = 0; i < tree_history.size(); i++) {
+    total_dom_nodes += tree_history[i].num_nodes_added;
+  }
+  // a little tricky to get node size using sizeof.... this should be equivalent
+  double b_tree_node_size = sizeof(void *) * 2 + sizeof(void *) * 2 * B_ELEMS - 1 + sizeof(void *) * 2 * B_ELEMS + sizeof(int);
+  double numerator = total_dom_nodes * sizeof(DOMNode) + // size of all DOMNodes
+                      tree_history.size() * sizeof(DOMTree) + sizeof(std::vector<DOMTree>) + // size tree_history
+                      (double)total_dom_nodes/B_ELEMS * b_tree_node_size; // b tree overhead
+
+  double size_in_mb = numerator/ 1000.0;
+  std::cout << "Memory usage: " << size_in_mb << " kb" << std::endl;
+}
+
 int main(int argc, const char** argv) {
   if (argc != 2) {
     printf("Usage: b_tree <html director>.\n");
@@ -433,30 +453,34 @@ int main(int argc, const char** argv) {
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
   tree_history.push_back(empty_tree);
-  for (size_t i = 0; i < file_paths.size(); i++) {
-    const char *filename = file_paths[i].c_str();
-    std::cout << "loading: " << filename << std::endl;
-    // open file
-    FILE* fp = fopen(filename, "r");
-    if (!fp) {
-      printf("File %s not found!\n", filename);
-      exit(EXIT_FAILURE);
+  for (size_t j = 0; j < 20; j++) {
+    for (size_t i = 0; i < file_paths.size(); i++) {
+      const char *filename = file_paths[i].c_str();
+      std::cout << "loading: " << filename << std::endl;
+      // open file
+      FILE* fp = fopen(filename, "r");
+      if (!fp) {
+        printf("File %s not found!\n", filename);
+        exit(EXIT_FAILURE);
+      }
+      char* input;
+      int input_length;
+      read_file(fp, &input, &input_length);
+      // parse
+      GumboOutput* output = gumbo_parse_with_options(
+          &kGumboDefaultOptions, input, input_length);
+
+      // convert to DOMTree
+      DOMNode *dom_root = load_dom(output->root);
+      tree_history.push_back(merge_dom_with_persistent_tree(dom_root, tree_history.back()));
+
+      // free
+      gumbo_destroy_output(&kGumboDefaultOptions, output);
+      free(input);
     }
-    char* input;
-    int input_length;
-    read_file(fp, &input, &input_length);
-    // parse
-    GumboOutput* output = gumbo_parse_with_options(
-        &kGumboDefaultOptions, input, input_length);
-
-    // convert to DOMTree
-    DOMNode *dom_root = load_dom(output->root);
-    tree_history.push_back(merge_dom_with_persistent_tree(dom_root, tree_history.back()));
-
-    // free
-    gumbo_destroy_output(&kGumboDefaultOptions, output);
-    free(input);
   }
+
+  log_estimated_memory_usage(tree_history);
 
   interactive_query(tree_history);
 
