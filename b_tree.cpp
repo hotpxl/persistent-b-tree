@@ -223,18 +223,7 @@ merge_new_nodes(DOMNode *dom_parent,
 
 static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &original_tree) {
   DOMTree new_tree = DOMTree(dom_root, original_tree.persistent_root);
-  std::unordered_map<size_t, DOMNode *> original_hashes_map = original_tree.get_hashes_map();
-  std::unordered_map<size_t, DOMNode *> new_hashes_map = new_tree.get_hashes_map();
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> current_root = original_tree.persistent_root;
-  // remove elements from persistent tree that are no longer there
-  int remove_cnt = 0;
-  for (auto it=original_hashes_map.begin(); it!=original_hashes_map.end(); ++it) {
-    auto result = new_hashes_map.find(it->first);
-    if (result == new_hashes_map.end()) {
-      current_root = Remove(current_root, it->first); // TODO do i actually need this?
-      remove_cnt++;
-    }
-  }
 
   // add all new elements, delete duplicates and redo child pointers
   for (size_t i = 0; i < dom_root->children.size(); i++) {
