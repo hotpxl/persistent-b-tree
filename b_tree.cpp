@@ -336,6 +336,7 @@ static void interactive_query(std::vector<DOMTree> &tree_history) {
     std::cout << "1) query attr exact match" << std::endl;
     std::cout << "2) query attr contains" << std::endl;
     std::cout << "3) construct version" << std::endl;
+    std::cout << "> ";
     std::string ans;
     std::cin >> ans;
     bool exact_match;
