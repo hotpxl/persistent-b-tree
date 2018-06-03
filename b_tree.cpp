@@ -428,7 +428,7 @@ int main(int argc, const char** argv) {
     return EXIT_FAILURE;
   }
 
-  // TODO sort file paths
+  std::sort(file_paths.begin(), file_paths.end());
   std::vector<DOMTree> tree_history;
   std::shared_ptr<Node<size_t, DOMNode *, B_ELEMS>> persistent_root;
   DOMTree empty_tree = DOMTree(NULL, persistent_root);
