@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <set>
+#include <unordered_set>
 #include <unordered_map>
 #include <sstream>
 #include <iostream>
@@ -14,13 +14,25 @@
 #include <fstream>
 
 #define B_ELEMS 2
-struct cmp
+
+struct StrPtrHasher
 {
-  bool operator()(const std::string* lhs, const std::string* rhs) const  { 
-    return *lhs < *rhs;
+  size_t
+  operator()(const std::string *obj) const
+  {
+    return std::hash<std::string>()(*obj);
   }
 };
-static std::set<std::string *, cmp> global_text_set;
+
+struct StrPtrCmp
+{
+  bool
+  operator()(const std::string *obj1, const std::string *obj2) const
+  {
+    return *obj1 == *obj2;
+  }
+};
+static std::unordered_set<std::string *, StrPtrHasher, StrPtrCmp> global_text_set;
 static size_t bytes_saved = 0;
 
 // from http://thispointer.com/find-and-replace-all-occurrences-of-a-sub-string-in-c/
@@ -464,7 +476,7 @@ static void log_estimated_memory_usage(std::vector<DOMTree> &tree_history) {
     total_dom_nodes += tree_history[i].num_nodes_added;
   }
   size_t text_size = 0;
-  for (std::set<std::string *>::iterator it=global_text_set.begin(); it!=global_text_set.end(); ++it) {
+  for (std::unordered_set<std::string *>::iterator it=global_text_set.begin(); it!=global_text_set.end(); ++it) {
     text_size += (**it).size();
   }
   // a little tricky to get node size using sizeof.... this should be equivalent
