@@ -14,6 +14,14 @@
 #include <fstream>
 
 #define B_ELEMS 2
+struct cmp
+{
+  bool operator()(const std::string* lhs, const std::string* rhs) const  { 
+    return *lhs != *rhs;
+  }
+};
+static std::set<std::string *, cmp> global_text_set;
+static size_t bytes_saved = 0;
 
 // from http://thispointer.com/find-and-replace-all-occurrences-of-a-sub-string-in-c/
 void replace_all(std::string & data, std::string toSearch, std::string replaceStr)
@@ -48,20 +56,24 @@ public:
   void set_text(std::string text);
   void hash();
   std::string info();
+  std::string get_text();
+  
   std::vector<DOMNode *> children;
   std::string tag;
   std::vector<std::pair<std::string, std::string> > attrs;
-  std::string text; // only if node is GumboText
+
 
 private:
   size_t hash_value;
   bool hash_computed;
+  std::string *text; // only if node is GumboText
   // size_t type;
 };
 
 
 DOMNode::DOMNode() {
   hash_computed = false;
+  text = NULL;
 }
 
 DOMNode::~DOMNode() {
@@ -70,7 +82,7 @@ DOMNode::~DOMNode() {
 std::string DOMNode::info() {
   std::string info_blob = "<tag: " + tag + ", " + std::to_string(hash_value);
   info_blob.append(", #children: " + std::to_string(children.size()));
-  info_blob.append(", text: " + text);
+  info_blob.append(", text: " + get_text());
   info_blob.append(", attrs: [");
   for (size_t i = 0; i < attrs.size(); i++) {
     info_blob.append("(" + attrs[i].first + ":" + attrs[i].second + "),");
@@ -98,13 +110,26 @@ void DOMNode::set_tag(std::string tag) {
 }
 
 void DOMNode::set_text(std::string text) {
-  this->text = text;
+  std::string *text_ptr = NULL;
+  if (global_text_set.find(&text) == global_text_set.end()) {
+    text_ptr = new std::string(text);
+    global_text_set.insert(text_ptr);
+  } else {
+    bytes_saved += text.size();
+    text_ptr = *global_text_set.find(&text);
+  }
+  this->text = text_ptr;
+}
+
+std::string DOMNode::get_text() {
+  if (text == NULL) return "";
+  return *text;
 }
 
 void DOMNode::hash() {
   std::string text_blob;
   text_blob.append(tag);
-  text_blob.append(text);
+  text_blob.append(get_text());
   for (size_t i = 0; i < children.size(); i++) {
     text_blob.append(std::to_string(children[i]->get_hash()));
   }
@@ -280,7 +305,7 @@ static DOMNode *load_dom(const GumboNode* root) {
 static std::string create_html_str(DOMNode *root) {
   if (root == NULL) return "";
   if (root->tag == "") {
-    return root->text;
+    return root->get_text();
   } else {
     std::string html_str;
     html_str.append("<" + root->tag + " "); // open
@@ -403,14 +428,20 @@ static void log_estimated_memory_usage(std::vector<DOMTree> &tree_history) {
   for (size_t i = 0; i < tree_history.size(); i++) {
     total_dom_nodes += tree_history[i].num_nodes_added;
   }
+  size_t text_size = 0;
+  for (std::set<std::string *>::iterator it=global_text_set.begin(); it!=global_text_set.end(); ++it) {
+    text_size += (**it).size();
+  }
   // a little tricky to get node size using sizeof.... this should be equivalent
   double b_tree_node_size = sizeof(void *) * 2 + sizeof(void *) * 2 * B_ELEMS - 1 + sizeof(void *) * 2 * B_ELEMS + sizeof(int);
   double numerator = total_dom_nodes * sizeof(DOMNode) + // size of all DOMNodes
                       tree_history.size() * sizeof(DOMTree) + sizeof(std::vector<DOMTree>) + // size tree_history
-                      (double)total_dom_nodes/B_ELEMS * b_tree_node_size; // b tree overhead
+                      (double)total_dom_nodes/B_ELEMS * b_tree_node_size + // b tree overhead
+                      text_size;
 
-  double size_in_mb = numerator/ 1000.0;
-  std::cout << "Memory usage: " << size_in_mb << " kb" << std::endl;
+  double size_in_mb = numerator/ 1000000.0;
+  std::cout << "Memory usage: " << size_in_mb << " mb" << std::endl;
+  std::cout << "bytes_saved " << bytes_saved << std::endl;
 }
 
 int main(int argc, const char** argv) {
