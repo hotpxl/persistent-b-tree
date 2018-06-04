@@ -57,9 +57,10 @@ public:
   void hash();
   std::string info();
   std::string get_text();
+  std::string get_tag();
+
   
   std::vector<DOMNode *> children;
-  std::string tag;
   std::vector<std::pair<std::string, std::string> > attrs;
 
 
@@ -67,6 +68,8 @@ private:
   size_t hash_value;
   bool hash_computed;
   std::string *text; // only if node is GumboText
+  std::string *tag;
+
   // size_t type;
 };
 
@@ -74,13 +77,14 @@ private:
 DOMNode::DOMNode() {
   hash_computed = false;
   text = NULL;
+  tag = NULL;
 }
 
 DOMNode::~DOMNode() {
 }
 
 std::string DOMNode::info() {
-  std::string info_blob = "<tag: " + tag + ", " + std::to_string(hash_value);
+  std::string info_blob = "<tag: " + get_tag() + ", " + std::to_string(hash_value);
   info_blob.append(", #children: " + std::to_string(children.size()));
   info_blob.append(", text: " + get_text());
   info_blob.append(", attrs: [");
@@ -106,7 +110,20 @@ void DOMNode::add_attr(std::string name, std::string value) {
 }
 
 void DOMNode::set_tag(std::string tag) {
-  this->tag = tag;
+  std::string *tag_ptr = NULL;
+  if (global_text_set.find(&tag) == global_text_set.end()) {
+    tag_ptr = new std::string(tag);
+    global_text_set.insert(tag_ptr);
+  } else {
+    bytes_saved += tag.size();
+    tag_ptr = *global_text_set.find(&tag);
+  }
+  this->tag = tag_ptr;
+}
+
+std::string DOMNode::get_tag() {
+  if (tag == NULL) return "";
+  return *this->tag;
 }
 
 void DOMNode::set_text(std::string text) {
@@ -128,7 +145,7 @@ std::string DOMNode::get_text() {
 
 void DOMNode::hash() {
   std::string text_blob;
-  text_blob.append(tag);
+  text_blob.append(get_tag());
   text_blob.append(get_text());
   for (size_t i = 0; i < children.size(); i++) {
     text_blob.append(std::to_string(children[i]->get_hash()));
@@ -304,11 +321,11 @@ static DOMNode *load_dom(const GumboNode* root) {
 // may not be exact
 static std::string create_html_str(DOMNode *root) {
   if (root == NULL) return "";
-  if (root->tag == "") {
+  if (root->get_tag() == "") {
     return root->get_text();
   } else {
     std::string html_str;
-    html_str.append("<" + root->tag + " "); // open
+    html_str.append("<" + root->get_tag() + " "); // open
     // attrs
     for (size_t i = 0; i < root->attrs.size(); i++) {
       html_str.append(root->attrs[i].first + "=\"" + root->attrs[i].second + "\" ");
@@ -317,7 +334,7 @@ static std::string create_html_str(DOMNode *root) {
     for (size_t i = 0; i < root->children.size(); i++) {
       html_str.append(create_html_str(root->children[i]));
     }
-    html_str.append("</" + root->tag + ">");
+    html_str.append("</" + root->get_tag() + ">");
     return html_str;
   }
 }
