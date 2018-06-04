@@ -17,7 +17,7 @@
 struct cmp
 {
   bool operator()(const std::string* lhs, const std::string* rhs) const  { 
-    return *lhs != *rhs;
+    return *lhs < *rhs;
   }
 };
 static std::set<std::string *, cmp> global_text_set;
@@ -38,7 +38,6 @@ void replace_all(std::string & data, std::string toSearch, std::string replaceSt
     pos =data.find(toSearch, pos + toSearch.size());
   }
 }
-
 
 // .................
 // start DOMNode class
@@ -61,7 +60,7 @@ public:
 
   
   std::vector<DOMNode *> children;
-  std::vector<std::pair<std::string, std::string> > attrs;
+  std::vector<std::pair<std::string *, std::string *> > attrs;
 
 
 private:
@@ -89,7 +88,7 @@ std::string DOMNode::info() {
   info_blob.append(", text: " + get_text());
   info_blob.append(", attrs: [");
   for (size_t i = 0; i < attrs.size(); i++) {
-    info_blob.append("(" + attrs[i].first + ":" + attrs[i].second + "),");
+    info_blob.append("(" + *attrs[i].first + ":" + *attrs[i].second + "),");
   }
   info_blob.append("]");
   info_blob.append(">");
@@ -106,7 +105,24 @@ void DOMNode::add_attr(std::string name, std::string value) {
   replace_all(value, ">", "&gt;");
   replace_all(value, "&", "&amp;");
   replace_all(value, "'", "&#39;");
-  attrs.push_back(std::make_pair(name, value));
+  std::string *name_ptr = NULL;
+  if (global_text_set.find(&name) == global_text_set.end()) {
+    name_ptr = new std::string(name);
+    global_text_set.insert(name_ptr);
+  } else {
+    bytes_saved += name.size();
+    name_ptr = *global_text_set.find(&name);
+  }
+  std::string *value_ptr = NULL;
+  if (global_text_set.find(&value) == global_text_set.end()) {
+    value_ptr = new std::string(value);
+    global_text_set.insert(value_ptr);
+  } else {
+    bytes_saved += value.size();
+    value_ptr = *global_text_set.find(&value);
+  }
+
+  attrs.push_back(std::make_pair(name_ptr, value_ptr));
 }
 
 void DOMNode::set_tag(std::string tag) {
@@ -151,7 +167,7 @@ void DOMNode::hash() {
     text_blob.append(std::to_string(children[i]->get_hash()));
   }
   for (size_t i = 0; i < attrs.size(); i++) {
-    text_blob.append(attrs[i].first + ":" + attrs[i].second);
+    text_blob.append(*attrs[i].first + ":" + *attrs[i].second);
   }
   hash_value = std::hash<std::string>{}(text_blob);
   hash_computed = true;
@@ -249,6 +265,7 @@ merge_new_nodes(DOMNode *dom_parent,
   if (Find(current_root, dom_child->get_hash()) == OPTIONAL_NS::nullopt) {
     // add
     current_root = Insert(current_root, std::make_pair(dom_child->get_hash(), dom_child));
+    // std::cout << "insert" << std::endl;
     num_nodes_added++;
   } else {
     // delete child and repoint parent
@@ -273,6 +290,7 @@ static DOMTree merge_dom_with_persistent_tree(DOMNode *dom_root, DOMTree &origin
   }
   if (Find(current_root, dom_root->get_hash()) == OPTIONAL_NS::nullopt) {
     current_root = Insert(current_root, std::make_pair(dom_root->get_hash(), dom_root));
+    // std::cout << "insert" << std::endl;
     new_tree.num_nodes_added++;
   } else {
     DOMNode *existing_node = *Find(current_root, dom_root->get_hash());
@@ -328,7 +346,7 @@ static std::string create_html_str(DOMNode *root) {
     html_str.append("<" + root->get_tag() + " "); // open
     // attrs
     for (size_t i = 0; i < root->attrs.size(); i++) {
-      html_str.append(root->attrs[i].first + "=\"" + root->attrs[i].second + "\" ");
+      html_str.append(*root->attrs[i].first + "=\"" + *root->attrs[i].second + "\" ");
     }
     html_str.append(">");
     for (size_t i = 0; i < root->children.size(); i++) {
@@ -348,11 +366,11 @@ static void _get_elements_by_attr(DOMNode *root,
   // check match
   for (size_t i = 0; i < root->attrs.size(); i++) {
     if (exact_match) {
-      if (root->attrs[i].first == key && root->attrs[i].second == value) {
+      if (*root->attrs[i].first == key && *root->attrs[i].second == value) {
         matches.push_back(root);
       }
     } else {
-      if (root->attrs[i].first == key && root->attrs[i].second.find(value) != std::string::npos) {
+      if (*root->attrs[i].first == key && root->attrs[i].second->find(value) != std::string::npos) {
         matches.push_back(root);
       }
     }
@@ -458,6 +476,7 @@ static void log_estimated_memory_usage(std::vector<DOMTree> &tree_history) {
 
   double size_in_mb = numerator/ 1000000.0;
   std::cout << "Memory usage: " << size_in_mb << " mb" << std::endl;
+  std::cout << "text bytes: "  << text_size << std::endl;
   std::cout << "bytes_saved " << bytes_saved << std::endl;
 }
 
